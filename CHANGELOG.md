@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.0] - 2026-05-15
+## [0.9.0] - 2026-05-16
 
 First public release. Feature-complete reimplementation of Python reclass
 ([salt-formulas/reclass](https://github.com/salt-formulas/reclass)) with 100% CLI

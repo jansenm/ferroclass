@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MPL-2.0
 
 Name:           ferroclass
-Version:        0.8.0
-Release:        5%{?dist}
+Version:        0.9.0
+Release:        1%{?dist}
 Summary:        Hierarchical inventory management tool (reclass compatible)
 
 License:        MPL-2.0
@@ -105,20 +105,5 @@ make install DESTDIR=%{buildroot} PREFIX=%{_prefix}
 %{_mandir}/man1/reclass-salt.1*
 
 %changelog
-* Thu May 15 2026 Michael Jansen <mike@michael-jansen.biz> - 0.8.0-4
-- Migrate %install to use make install targets for single source of truth
-- Add install/uninstall targets to Makefile following GNU conventions
-
-* Wed May 14 2026 Michael Jansen <mike@michael-jansen.biz> - 0.8.0-3
-- Add man pages for reclass, reclass-ansible, and reclass-salt
-- Move CLI option structs to library crate for reuse and man page generation
-- Add generate-manpages binary (feature-gated) and Makefile targets
-- Make reclass-ansible and reclass-salt independently installable:
-  remove hard Requires on main ferroclass package, keep Supplements
-  for auto-installation, add %license to each sub-package
-
-* Wed May 13 2026 Michael Jansen <mike@michael-jansen.biz> - 0.8.0-1
+* Sat May 16 2026 Michael Jansen <mike@michael-jansen.biz> - 0.9.0-1
 - Initial package
-- Use %cargo_build/%cargo_test macros when cargo-packaging is installed,
-  fall back to plain cargo commands otherwise
-- Use %rust_arches when defined, explicit arch list as fallback

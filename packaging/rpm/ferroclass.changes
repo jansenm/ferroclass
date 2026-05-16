@@ -1,33 +1,5 @@
 -------------------------------------------------------------------
-Thu May 15 2026 Michael Jansen <mike@michael-jansen.biz> - 0.8.0-5
-
-- Move tarball creation from packaging/rpm/Makefile to top-level Makefile
-- Packaging Makefile now only builds RPMs from pre-existing tarballs
-- VERSION and NAME read from spec file (single source of truth)
-- make dist creates tarballs; make packaging creates tarballs then builds RPMs
-
--------------------------------------------------------------------
-Thu May 15 2026 Michael Jansen <mike@michael-jansen.biz> - 0.8.0-4
-
-- Migrate %install to use make install targets
-- Add GNU Make install/uninstall/check targets to Makefile
-- Add .PHONY declarations, standard variables (PREFIX, DESTDIR, etc.)
-
--------------------------------------------------------------------
-Wed May 14 2026 Michael Jansen <mike@michael-jansen.biz> - 0.8.0-3
-
-- Add man pages for reclass(1), reclass-ansible(1), and reclass-salt(1)
-- Add check-manpages Makefile target to verify committed man pages are current
-
--------------------------------------------------------------------
-Wed May 14 2026 Michael Jansen <mike@michael-jansen.biz> - 0.8.0-2
-
-- Make reclass-ansible and reclass-salt independently installable:
-  sub-packages no longer require the main ferroclass package,
-  Supplements kept for auto-installation with the main package
-
--------------------------------------------------------------------
-Wed May 13 2026 Michael Jansen <mike@michael-jansen.biz> - 0.8.0-1
+Sat May 16 2026 Michael Jansen <mike@michael-jansen.biz> - 0.9.0-1
 
 - Initial package for SUSE Tumbleweed
   Provides reclass, reclass-ansible, and reclass-salt binaries
