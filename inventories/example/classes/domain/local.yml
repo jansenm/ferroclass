@@ -1,0 +1,5 @@
+---
+parameters:
+  domain:
+    name: "example.com"
+    fqdn: "${hostname}.${domain:name}"

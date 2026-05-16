@@ -1,0 +1,5 @@
+classes:
+  - all
+parameters:
+  environment_name: production
+  log_level: warn

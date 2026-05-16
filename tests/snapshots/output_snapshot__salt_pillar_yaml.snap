@@ -1,0 +1,29 @@
+---
+source: tests/output_snapshot.rs
+assertion_line: 184
+expression: yaml
+---
+---
+global:
+  admin:
+    email: admin@example.com
+  timezone: UTC
+environment_name: production
+log_level: warn
+role: web
+webserver:
+  port: 80
+  ssl: true
+hostname: web-prod-01
+ip: 10.0.1.10
+_reclass_:
+  name:
+    full: web-prod-01
+    short: web-prod-01
+  nodename: web-prod-01
+  classes:
+    - all
+    - env.production
+    - role.web
+  applications: []
+  environment: base

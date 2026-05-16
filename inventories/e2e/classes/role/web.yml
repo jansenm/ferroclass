@@ -1,0 +1,5 @@
+parameters:
+  role: web
+  webserver:
+    port: 80
+    ssl: true

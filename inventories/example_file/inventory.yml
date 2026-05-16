@@ -1,0 +1,41 @@
+---
+# Inventory metadata
+classes_uri: classes
+nodes_uri: nodes
+---
+# Class: all
+name: all
+environment: production
+classes:
+  - linux.distro.tumbleweed
+parameters:
+  timezone: UTC
+---
+# Class: linux.distro.tumbleweed
+name: linux.distro.tumbleweed
+classes:
+  - domain.local
+parameters:
+  package_manager: zypper
+---
+# Node: laptop
+name: laptop
+type: node
+classes:
+  - all
+parameters:
+  hostname: laptop
+  system:
+    memory: 16GB
+    cpu: 8
+---
+# Node: desktop
+name: desktop
+type: node
+classes:
+  - all
+parameters:
+  hostname: desktop
+  system:
+    memory: 32GB
+    cpu: 16

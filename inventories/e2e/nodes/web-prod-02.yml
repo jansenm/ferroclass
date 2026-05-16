@@ -1,0 +1,10 @@
+classes:
+  - env.production
+  - role.web
+parameters:
+  hostname: web-prod-02
+  ip: 10.0.1.11
+  peers: "$[exports:ip if exports:role == web]"
+exports:
+  ip: 10.0.1.11
+  role: web

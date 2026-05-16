@@ -1,0 +1,11 @@
+---
+source: tests/output_snapshot.rs
+assertion_line: 174
+expression: yaml
+---
+---
+base:
+  app-staging-01: []
+  db-prod-01: []
+  web-prod-01: []
+  web-prod-02: []

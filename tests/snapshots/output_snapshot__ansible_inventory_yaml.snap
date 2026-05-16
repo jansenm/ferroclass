@@ -1,0 +1,156 @@
+---
+source: tests/output_snapshot.rs
+expression: normalize_uris(&yaml)
+---
+---
+all:
+  hosts:
+    - app-staging-01
+    - db-prod-01
+    - web-prod-01
+    - web-prod-02
+env.production:
+  hosts:
+    - db-prod-01
+    - web-prod-01
+    - web-prod-02
+env.staging:
+  hosts:
+    - app-staging-01
+role.app:
+  hosts:
+    - app-staging-01
+role.db:
+  hosts:
+    - db-prod-01
+role.web:
+  hosts:
+    - app-staging-01
+    - web-prod-01
+    - web-prod-02
+_meta:
+  hostvars:
+    app-staging-01:
+      __reclass__:
+        applications: []
+        classes:
+          - all
+          - env.staging
+          - role.web
+          - role.app
+        environment: base
+        name: app-staging-01
+        node: app-staging-01
+        timestamp: "Thu Jan  1 00:00:00 2026"
+        uri: "yaml_fs://$PROJECT_ROOT/inventories/e2e/nodes/app-staging-01.yml"
+      _reclass_:
+        environment: base
+        name:
+          full: app-staging-01
+          short: app-staging-01
+      global:
+        admin:
+          email: admin@example.com
+        timezone: UTC
+      environment_name: staging
+      log_level: debug
+      role: web
+      webserver:
+        port: 80
+        ssl: true
+      app:
+        name: myapp
+        version: "1.0"
+      hostname: app-staging-01
+      ip: 10.0.2.10
+      monitor_endpoint: "app-staging-01:80"
+    db-prod-01:
+      __reclass__:
+        applications: []
+        classes:
+          - all
+          - env.production
+          - role.db
+        environment: base
+        name: db-prod-01
+        node: db-prod-01
+        timestamp: "Thu Jan  1 00:00:00 2026"
+        uri: "yaml_fs://$PROJECT_ROOT/inventories/e2e/nodes/db-prod-01.yml"
+      _reclass_:
+        environment: base
+        name:
+          full: db-prod-01
+          short: db-prod-01
+      global:
+        admin:
+          email: admin@example.com
+        timezone: UTC
+      environment_name: production
+      log_level: warn
+      role: db
+      database:
+        engine: postgresql
+        port: 5432
+      hostname: db-prod-01
+      ip: 10.0.1.20
+    web-prod-01:
+      __reclass__:
+        applications: []
+        classes:
+          - all
+          - env.production
+          - role.web
+        environment: base
+        name: web-prod-01
+        node: web-prod-01
+        timestamp: "Thu Jan  1 00:00:00 2026"
+        uri: "yaml_fs://$PROJECT_ROOT/inventories/e2e/nodes/web-prod-01.yml"
+      _reclass_:
+        environment: base
+        name:
+          full: web-prod-01
+          short: web-prod-01
+      global:
+        admin:
+          email: admin@example.com
+        timezone: UTC
+      environment_name: production
+      log_level: warn
+      role: web
+      webserver:
+        port: 80
+        ssl: true
+      hostname: web-prod-01
+      ip: 10.0.1.10
+    web-prod-02:
+      __reclass__:
+        applications: []
+        classes:
+          - all
+          - env.production
+          - role.web
+        environment: base
+        name: web-prod-02
+        node: web-prod-02
+        timestamp: "Thu Jan  1 00:00:00 2026"
+        uri: "yaml_fs://$PROJECT_ROOT/inventories/e2e/nodes/web-prod-02.yml"
+      _reclass_:
+        environment: base
+        name:
+          full: web-prod-02
+          short: web-prod-02
+      global:
+        admin:
+          email: admin@example.com
+        timezone: UTC
+      environment_name: production
+      log_level: warn
+      role: web
+      webserver:
+        port: 80
+        ssl: true
+      hostname: web-prod-02
+      ip: 10.0.1.11
+      peers:
+        web-prod-01: 10.0.1.10
+        web-prod-02: 10.0.1.11

@@ -1,0 +1,84 @@
+---
+source: tests/output_snapshot.rs
+expression: normalize_uris(&yaml)
+---
+---
+__reclass__:
+  timestamp: "Thu Jan  1 00:00:00 2026"
+nodes:
+  reclass:
+    __reclass__:
+      environment: base
+      name: reclass
+      node: reclass
+      timestamp: "Thu Jan  1 00:00:00 2026"
+      uri: "yaml_fs://$PROJECT_ROOT/inventories/python_compat/nodes/reclass.yml"
+    applications: []
+    classes:
+      - first
+      - second
+      - third
+    environment: base
+    exports: {}
+    parameters:
+      1:
+        an_numeric_key: true
+        as_a_dict: 1
+      2:
+        - as_a_list
+      3: value
+      _param:
+        colour: red
+        notfound: exist
+        some: param
+      _reclass_:
+        environment: base
+        name:
+          full: reclass
+          short: reclass
+      colour:
+        doubleescaped: "\\red"
+        escaped: "${_param:colour}"
+        unescaped: red
+      colours:
+        blue:
+          name: blue
+        red:
+          name: red
+      dict_to_override: {}
+      empty:
+        dict: {}
+        list: []
+      lab:
+        label: first
+        name: test
+      list_to_override: []
+      myparam: param
+      one:
+        a: 1
+        b: 2
+      three:
+        a: 1
+        b: 2
+        c: 3
+        d: 4
+        e: 5
+      two:
+        c: 3
+        d: 4
+      will:
+        not:
+          fail:
+            at:
+              tree: exist
+        warn:
+          at:
+            second: exist
+classes:
+  first:
+    - reclass
+  second:
+    - reclass
+  third:
+    - reclass
+applications: {}

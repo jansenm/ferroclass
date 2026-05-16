@@ -1,0 +1,5 @@
+parameters:
+  global:
+    admin:
+      email: admin@example.com
+    timezone: UTC

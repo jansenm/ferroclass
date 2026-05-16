@@ -1,0 +1,5 @@
+classes:
+  - all
+parameters:
+  environment_name: staging
+  log_level: debug

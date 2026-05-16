@@ -1,0 +1,85 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "build": {
+      "disable": false,
+      "permission": {
+        "*": "allow"
+      }
+    },
+    "plan": {
+      "disable": false
+    }
+  },
+  "command": {
+    "commit": {
+      "agent": "build",
+      "description": "commit changes",
+      "model": "ollama/kimi-k2.6:cloud",
+      "template": "Run the code quality tools, fix all issues, run rustfmt and commit"
+    },
+    "profile": {
+      "agent": "build",
+      "description": "profile the code",
+      "model": "ollama/kimi-k2.6:cloud",
+      "template": "Profile the rust implementation."
+    }
+  },
+  "default_agent": "plan",
+  "instructions": [
+    "AGENTS.md"
+  ],
+  "lsp": {
+    "rust": {
+      "command": [
+        "rust-analyzer"
+      ],
+      "env": {
+        "RUST_LOG": "debug"
+      }
+    }
+  },
+  "model": "ollama/glm-5.1:cloud",
+  "permission": {
+    "*": "deny",
+    "bash": {
+      "*": "deny",
+      "find *": "allow",
+      "find *-delete*": "deny",
+      "find *-exec*": "deny",
+      "find *-execdir*": "deny",
+      "grep *": "allow",
+      "rg *": "allow",
+      "wc -l *": "allow"
+    },
+    "external_directory": {
+      "references/reclass/**": "allow",
+      "~/local/opt/reclass/reclass-salt/**": "allow"
+    },
+    "glob": "allow",
+    "grep": "allow",
+    "lsp": "allow",
+    "question": "allow",
+    "read": "allow",
+    "rg": "allow",
+    "todo": "allow",
+    "webfetch": "allow",
+    "websearch": "allow"
+  },
+  "plugin": [
+    "@franlol/opencode-md-table-formatter@latest"
+  ],
+  "provider": {
+    "ollama": {
+      "name": "Ollama",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://127.0.0.1:11434/v1"
+      }
+    }
+  },
+  "tools": {
+    "codesearch": true,
+    "websearch": true
+  }
+}

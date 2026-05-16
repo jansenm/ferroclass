@@ -1,0 +1,13 @@
+---
+classes:
+  - domain.local
+  - linux.distro.tumbleweed
+
+parameters:
+
+  hostname: "laptop"
+
+  system:
+    is_server: false
+    cpu_count: 8
+    memory_gb: 16.5

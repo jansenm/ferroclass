@@ -1,0 +1,9 @@
+classes:
+  - env.production
+  - role.web
+parameters:
+  hostname: web-prod-01
+  ip: 10.0.1.10
+exports:
+  ip: 10.0.1.10
+  role: web

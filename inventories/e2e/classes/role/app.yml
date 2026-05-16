@@ -1,0 +1,6 @@
+classes:
+  - role.web
+parameters:
+  app:
+    name: myapp
+    version: "1.0"

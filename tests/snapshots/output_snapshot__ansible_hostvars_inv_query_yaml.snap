@@ -1,0 +1,36 @@
+---
+source: tests/output_snapshot.rs
+expression: normalize_uris(&yaml)
+---
+---
+__reclass__:
+  node: web-prod-02
+  name: web-prod-02
+  uri: "yaml_fs://$PROJECT_ROOT/inventories/e2e/nodes/web-prod-02.yml"
+  environment: base
+  timestamp: "Thu Jan  1 00:00:00 2026"
+  applications: []
+  classes:
+    - all
+    - env.production
+    - role.web
+_reclass_:
+  name:
+    full: web-prod-02
+    short: web-prod-02
+  environment: base
+global:
+  admin:
+    email: admin@example.com
+  timezone: UTC
+environment_name: production
+log_level: warn
+role: web
+webserver:
+  port: 80
+  ssl: true
+hostname: web-prod-02
+ip: 10.0.1.11
+peers:
+  web-prod-01: 10.0.1.10
+  web-prod-02: 10.0.1.11

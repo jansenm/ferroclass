@@ -1,0 +1,7 @@
+---
+classes:
+  - all
+
+parameters:
+  os:
+    name: "openSUSE Tumbleweed"

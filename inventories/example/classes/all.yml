@@ -1,0 +1,6 @@
+---
+parameters:
+
+  global:
+    admin:
+      email: "it@example.com"

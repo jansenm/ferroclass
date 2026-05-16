@@ -1,0 +1,10 @@
+classes:
+  - env.staging
+  - role.app
+parameters:
+  hostname: app-staging-01
+  ip: 10.0.2.10
+  monitor_endpoint: "${hostname}:${webserver:port}"
+exports:
+  ip: 10.0.2.10
+  role: app

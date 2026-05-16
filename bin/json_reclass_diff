@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -o errexit -o nounset
+
+_jq() {
+    jq --sort-keys "
+        (.classes.[] |= sort)
+        " "$@"
+}
+
+diff -u --ignore-matching-lines '.*"timestamp":.*' <(_jq "${1:?error}") <(_jq "${2:?error}")

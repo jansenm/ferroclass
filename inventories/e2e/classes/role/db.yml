@@ -1,0 +1,5 @@
+parameters:
+  role: db
+  database:
+    engine: postgresql
+    port: 5432

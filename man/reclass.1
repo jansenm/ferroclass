@@ -1,0 +1,108 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH reclass 1  "reclass 0.8.0" 
+.SH NAME
+reclass \- Hierarchical inventory management tool (reclass compatible)
+.SH SYNOPSIS
+\fBreclass\fR [\fB\-v\fR|\fB\-\-verbose\fR] [\fB\-s\fR|\fB\-\-storage\-type\fR] [\fB\-b\fR|\fB\-\-inventory\-base\-uri\fR] [\fB\-u\fR|\fB\-\-nodes\-uri\fR] [\fB\-c\fR|\fB\-\-classes\-uri\fR] [\fB\-p\fR|\fB\-\-parameter\-key\-style\fR] [\fB\-a\fR|\fB\-\-compose\-node\-name\fR] [\fB\-z\fR|\fB\-\-ignore\-class\-notfound\fR] [\fB\-x\fR|\fB\-\-ignore\-class\-notfound\-regexp\fR] [\fB\-o\fR|\fB\-\-output\fR] [\fB\-y\fR|\fB\-\-pretty\-print\fR] [\fB\-\-output\-sorted\fR] [\fB\-r\fR|\fB\-\-no\-refs\fR] [\fB\-0\fR|\fB\-\-multiple\-errors\fR] [\fB\-1\fR|\fB\-\-single\-error\fR] [\fB\-i\fR|\fB\-\-inventory\fR] [\fB\-n\fR|\fB\-\-nodeinfo\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] 
+.SH DESCRIPTION
+Hierarchical inventory management tool (reclass compatible)
+.SH OPTIONS
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+enable verbose logging
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH "DATABASE OPTIONS"
+.TP
+\fB\-s\fR, \fB\-\-storage\-type\fR \fI<STORAGE_TYPE>\fR
+the type of storage backend to use
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+yaml\-fs: YAML file system storage (directory\-based)
+.IP \(bu 2
+yaml\-file: YAML file storage (single file with multiple documents)
+.RE
+.TP
+\fB\-b\fR, \fB\-\-inventory\-base\-uri\fR \fI<INVENTORY_BASE_URI>\fR
+the base URI to prepend to nodes and classes
+.TP
+\fB\-u\fR, \fB\-\-nodes\-uri\fR \fI<NODES_URI>\fR
+the URI to the node storage
+.TP
+\fB\-c\fR, \fB\-\-classes\-uri\fR \fI<CLASSES_URI>\fR
+the URI to the class storage
+.TP
+\fB\-p\fR, \fB\-\-parameter\-key\-style\fR \fI<PARAMETER_KEY_STYLE>\fR
+parameter key validation style
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+none: No validation of parameter keys
+.IP \(bu 2
+ansible: Ansible variable name rules (letters, numbers, underscores only)
+.RE
+.TP
+\fB\-a\fR, \fB\-\-compose\-node\-name\fR
+compose node names from subdirectory paths
+.TP
+\fB\-z\fR, \fB\-\-ignore\-class\-notfound\fR
+ignore classes that are not found instead of raising an error
+.TP
+\fB\-x\fR, \fB\-\-ignore\-class\-notfound\-regexp\fR \fI<PATTERN>\fR
+regexp pattern for class names to ignore when not found (can be specified multiple times)
+.SH "OUTPUT OPTIONS"
+.TP
+\fB\-o\fR, \fB\-\-output\fR \fI<OUTPUT>\fR
+output format (YAML or JSON)
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+yaml: YAML output format
+.IP \(bu 2
+json: JSON output format
+.RE
+.TP
+\fB\-y\fR, \fB\-\-pretty\-print\fR
+pretty\-print output (indented, newlines)
+.TP
+\fB\-\-output\-sorted\fR
+sort keys alphabetically in output
+.TP
+\fB\-r\fR, \fB\-\-no\-refs\fR
+suppress YAML anchors/aliases in output (always enabled in this implementation; accepted for compatibility)
+.TP
+\fB\-0\fR, \fB\-\-multiple\-errors\fR
+group multiple resolve errors and report them together instead of failing on the first error
+.TP
+\fB\-1\fR, \fB\-\-single\-error\fR
+report only the first resolve error instead of grouping all errors
+.SH MODES
+.TP
+\fB\-i\fR, \fB\-\-inventory\fR
+output the entire inventory
+.TP
+\fB\-n\fR, \fB\-\-nodeinfo\fR \fI<NODENAME>\fR
+output information for a specific node
+.SH EXTRA
+Use \-\-inventory to output the entire inventory as YAML or JSON.
+Use \-\-nodeinfo NODENAME to output merged data for a specific node.
+
+Configuration is read from reclass\-config.yml in the current
+directory or its parents. CLI options override config file values.
+.SH VERSION
+v0.8.0

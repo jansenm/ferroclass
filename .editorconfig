@@ -1,0 +1,9 @@
+root = true
+
+[*]
+end_of_line = lf
+indent_size = tab
+tab_width = 4
+
+[{Makefile,Makefile.local}]
+indent_style = tab
