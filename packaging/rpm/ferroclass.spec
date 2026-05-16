@@ -80,13 +80,20 @@ cargo build --release --frozen %{?_smp_mflags}
 
 %check
 %if 0%{?cargo_test:1}
-%cargo_test --release
+%cargo_test
 %else
 cargo test --release --frozen
 %endif
 
 %install
-make install DESTDIR=%{buildroot} PREFIX=%{_prefix}
+install -d %{buildroot}%{_bindir}
+install -m 0755 target/release/reclass %{buildroot}%{_bindir}/reclass
+install -m 0755 target/release/reclass-ansible %{buildroot}%{_bindir}/reclass-ansible
+install -m 0755 target/release/reclass-salt %{buildroot}%{_bindir}/reclass-salt
+install -d %{buildroot}%{_mandir}/man1
+install -m 0644 man/reclass.1 %{buildroot}%{_mandir}/man1/reclass.1
+install -m 0644 man/reclass-ansible.1 %{buildroot}%{_mandir}/man1/reclass-ansible.1
+install -m 0644 man/reclass-salt.1 %{buildroot}%{_mandir}/man1/reclass-salt.1
 
 %files
 %license LICENSES/MPL-2.0.txt
