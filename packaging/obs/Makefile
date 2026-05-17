@@ -9,9 +9,16 @@ OBS_PROJECT  ?= home:$(USER):$(NAME)
 OBS_PACKAGE  ?= $(NAME)
 OBS_DIR      ?= $(HOME)/obs/$(OBS_PROJECT)/$(OBS_PACKAGE)
 
+# Build target configuration. Override these to build for a different
+# repository or architecture. The repository name must match an <repository>
+# entry in your OBS project meta. Common values:
+#   openSUSE_Tumbleweed  RockyLinux_9  RockyLinux_10
+OSC_REPO     ?= openSUSE_Tumbleweed
+OSC_ARCH     ?= x86_64
+
 RPM_DIR      := ../rpm
 
-TARGETS      := osc-checkout osc-sync osc-add osc-commit osc-build osc-service-run help
+TARGETS      := osc-checkout osc-sync osc-add osc-commit osc-build osc-build-rocky9 osc-build-rocky10 osc-service-run help
 
 ifndef DEBUG
 .SILENT:
@@ -46,10 +53,20 @@ osc-commit: osc-commit-start osc-commit-do osc-commit-end
 osc-commit-do:
 	cd $(OBS_DIR) && osc commit
 
-## osc-build            » build package using OBS (local chroot)
+## osc-build            » build package using OBS (local chroot, default: openSUSE_Tumbleweed x86_64)
 osc-build: osc-build-start osc-build-do osc-build-end
 osc-build-do:
-	cd $(OBS_DIR) && osc build openSUSE_Tumbleweed x86_64
+	cd $(OBS_DIR) && osc build $(OSC_REPO) $(OSC_ARCH)
+
+## osc-build-rocky9     » build for Rocky Linux 9 x86_64
+osc-build-rocky9: osc-build-rocky9-start osc-build-rocky9-do osc-build-rocky9-end
+osc-build-rocky9-do:
+	cd $(OBS_DIR) && osc build RockyLinux_9 x86_64
+
+## osc-build-rocky10    » build for Rocky Linux 10 x86_64
+osc-build-rocky10: osc-build-rocky10-start osc-build-rocky10-do osc-build-rocky10-end
+osc-build-rocky10-do:
+	cd $(OBS_DIR) && osc build RockyLinux_10 x86_64
 
 ## osc-service-run      » run OBS source services locally (needs obs-service-cargo)
 osc-service-run: osc-service-run-start osc-service-run-do osc-service-run-end
@@ -62,9 +79,6 @@ osc-service-run-do:
 
 %-start:
 	$(info ****** making $*)
-
-%-do:
-	$(info ****** doing $*)
 
 %-end:
 	$(info ****** finished $*)
@@ -81,7 +95,9 @@ help-do:
 	@echo "VARIABLE VALUE"
 	@echo "--------------"
 	@echo "OBS_PROJECT  = $(OBS_PROJECT)"
-	@echo "OBS_PACKAGE  = $(OBS_PACKAGE)"
-	@echo "OBS_DIR      = $(OBS_DIR)"
-	@echo "VERSION      = $(VERSION)"
-	@echo "NAME         = $(NAME)"
+	@echo "OBS_PACKAGE   = $(OBS_PACKAGE)"
+	@echo "OBS_DIR       = $(OBS_DIR)"
+	@echo "OSC_REPO      = $(OSC_REPO)"
+	@echo "OSC_ARCH      = $(OSC_ARCH)"
+	@echo "VERSION       = $(VERSION)"
+	@echo "NAME          = $(NAME)"

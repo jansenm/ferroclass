@@ -9,7 +9,7 @@ TARBALL := $(NAME)-$(VERSION).tar.gz
 VENDOR_TARBALL := $(NAME)-$(VERSION)-vendor.tar.gz
 BUILD_ROOT := /var/tmp/build-root
 
-.PHONY: rpm rpm-local rpm-obs clean help
+.PHONY: rpm rpm-local rpm-obs rpm-rocky9 clean help
 
 ##
 ## RPM BUILD
@@ -37,6 +37,15 @@ rpm-local: $(TARBALL) $(VENDOR_TARBALL)
 		--define "_builddir $(CURDIR)/BUILD" \
 		--define "_rpmdir $(CURDIR)/RPMS" \
 		--define "_buildrootdir $(CURDIR)/BUILDROOT"
+
+# Build in a chroot using obs-build targeting Rocky Linux 9.
+# Requires obs-build with rockylinux-9 dist config installed.
+## rpm-rocky9          » build RPM in chroot targeting Rocky Linux 9
+rpm-rocky9: $(TARBALL) $(VENDOR_TARBALL)
+	build --clean --stage=bb \
+		--dist rockylinux-9 \
+		--root $(BUILD_ROOT) \
+		$(NAME).spec
 
 ## rpm                 » build RPM locally (alias for rpm-local)
 rpm: rpm-local

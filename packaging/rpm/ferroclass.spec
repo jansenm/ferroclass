@@ -23,6 +23,7 @@ ExclusiveArch:  %{rust_arches}
 BuildRequires:  cargo-packaging
 BuildRequires:  cargo
 %else
+# RHEL, Rocky Linux, AlmaLinux, Fedora
 BuildRequires:  rust-packaging
 BuildRequires:  cargo
 %endif
@@ -113,4 +114,4 @@ install -m 0644 man/reclass-salt.1 %{buildroot}%{_mandir}/man1/reclass-salt.1
 
 %changelog
 * Sat May 16 2026 Michael Jansen <mike@michael-jansen.biz> - 0.9.0-1
-- Initial package
+- Initial package (SUSE Tumbleweed, Rocky Linux 9/10, Fedora)

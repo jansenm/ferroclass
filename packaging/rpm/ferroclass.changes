@@ -1,4 +1,11 @@
 -------------------------------------------------------------------
+Sun May 17 2026 Michael Jansen <mike@michael-jansen.biz> - 0.9.0-1
+
+- Add Rocky Linux 9/10 and Fedora build support
+- Add OBS build targets for RockyLinux_9 and RockyLinux_10
+- Add rpm-rocky9 Makefile target for local builds
+
+-------------------------------------------------------------------
 Sat May 16 2026 Michael Jansen <mike@michael-jansen.biz> - 0.9.0-1
 
 - Initial package for SUSE Tumbleweed
