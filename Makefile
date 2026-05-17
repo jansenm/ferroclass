@@ -16,6 +16,12 @@ NAME            := $(shell sed -n 's/^Name:\s*//p' packaging/rpm/ferroclass.spec
 TARBALL_DIR     := packaging/rpm
 TARBALL         := $(TARBALL_DIR)/$(NAME)-$(VERSION).tar.gz
 VENDOR_TARBALL  := $(TARBALL_DIR)/$(NAME)-$(VERSION)-vendor.tar.gz
+TARBALL_SHA256   := $(TARBALL).sha256
+VENDOR_SHA256   := $(VENDOR_TARBALL).sha256
+TARBALL_ASC     := $(TARBALL).asc
+VENDOR_ASC      := $(VENDOR_TARBALL).asc
+GPG_KEY          ?= mike@michael-jansen.biz
+GH_REPO          ?= jansenm/ferroclass
 
 MANPAGES        := man/reclass-ansible.1 man/reclass-salt.1 man/reclass.1
 
@@ -30,6 +36,12 @@ TARGETS         := all all-do all-end \
                    install-man install-man-do install-man-end \
                    uninstall uninstall-do uninstall-end \
                    dist dist-do dist-end \
+                   checksums checksums-do checksums-end \
+                   sign sign-do sign-end \
+                   tag tag-do tag-end \
+                   release-gh release-gh-do release-gh-end \
+                   release release-do release-end \
+                   bump-version bump-version-do bump-version-end \
                    osc-sync osc-sync-do osc-sync-end \
                    packaging packaging-do packaging-end \
                    setup-reclass setup-reclass-do setup-reclass-end \
@@ -89,6 +101,46 @@ dist: dist-start vendor dist-do dist-end
 dist-do:
 	git -C . archive --format=tar.gz --prefix=$(NAME)-$(VERSION)/ HEAD > $(TARBALL)
 	tar czf $(VENDOR_TARBALL) -C . vendor/ .cargo/config.toml
+
+## checksums          » generate SHA256 checksums for tarballs
+checksums: checksums-start dist checksums-do checksums-end
+checksums-do:
+	sha256sum $(TARBALL) > $(TARBALL_SHA256)
+	sha256sum $(VENDOR_TARBALL) > $(VENDOR_SHA256)
+
+## sign               » sign tarballs with GPG (requires GPG_KEY)
+sign: sign-start dist sign-do sign-end
+sign-do:
+	gpg --armor --detach-sign -u $(GPG_KEY) -o $(TARBALL_ASC) $(TARBALL)
+	gpg --armor --detach-sign -u $(GPG_KEY) -o $(VENDOR_ASC) $(VENDOR_TARBALL)
+
+## tag                » create and push git tag for current version
+tag: tag-start tag-do tag-end
+tag-do:
+	git tag -a v$(VERSION) -m "Release v$(VERSION)"
+	git push origin v$(VERSION)
+
+## release-gh         » create GitHub Release with tarballs and checksums
+release-gh: release-gh-start release-gh-do release-gh-end
+release-gh-do:
+	@CHANGELOG=$$(sed -n '/^## \[$(VERSION)\]/,/^## \[/{/^## \[/!p}' CHANGELOG.md); \
+	gh release create v$(VERSION) \
+		$(TARBALL) $(VENDOR_TARBALL) \
+		$(TARBALL_SHA256) $(VENDOR_SHA256) \
+		--title "v$(VERSION)" \
+		--notes "$$CHANGELOG"
+
+## bump-version       » bump version in spec and Cargo.toml (requires VERSION_NEW=x.y.z)
+bump-version: bump-version-start bump-version-do bump-version-end
+bump-version-do:
+	@test -n "$(VERSION_NEW)" || (echo "Usage: make bump-version VERSION_NEW=x.y.z" && exit 1)
+	sed -i 's/^Version:.*/Version:        $(VERSION_NEW)/' packaging/rpm/ferroclass.spec
+	sed -i 's/^version = ".*"/version = "$(VERSION_NEW)"/' Cargo.toml
+	@echo "Version bumped to $(VERSION_NEW). Update CHANGELOG.md before releasing."
+
+## release            » full release: verify, build, package, tag, and publish
+release: release-start commit dist checksums tag release-gh osc-sync release-end
+release-do:
 
 ##
 ## INSTALLATION
@@ -220,6 +272,8 @@ distclean: distclean-start clean distclean-do distclean-end
 distclean-do:
 	rm -rf vendor/
 	rm -f $(TARBALL) $(VENDOR_TARBALL)
+	rm -f $(TARBALL_SHA256) $(VENDOR_SHA256)
+	rm -f $(TARBALL_ASC) $(VENDOR_ASC)
 
 ## maintainer-clean    » remove everything that can be generated
 maintainer-clean: maintainer-clean-start distclean maintainer-clean-do maintainer-clean-end
@@ -255,6 +309,8 @@ help:
 	@echo "INSTALL_DATA     = $(INSTALL_DATA)"
 	@echo "VERSION          = $(VERSION)"
 	@echo "NAME             = $(NAME)"
+	@echo "GPG_KEY          = $(GPG_KEY)"
+	@echo "GH_REPO          = $(GH_REPO)"
 
 ##
 ## VARIABLES
@@ -269,5 +325,7 @@ help:
 ## INSTALL_DATA         » install command for data files
 ## VERSION              » package version (from spec file)
 ## NAME                 » package name (from spec file)
+## GPG_KEY              » GPG key ID for signing releases
+## GH_REPO              » GitHub repository (owner/repo format)
 ##
 ## VERBOSE				» print execute commands

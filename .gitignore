@@ -20,6 +20,8 @@ packaging/rpm/BUILD/
 packaging/rpm/BUILDROOT/
 packaging/rpm/RPMS/
 packaging/rpm/*.tar.gz
+packaging/rpm/*.sha256
+packaging/rpm/*.asc
 packaging/rpm/.cargo/
 
 # OBS packaging artifacts

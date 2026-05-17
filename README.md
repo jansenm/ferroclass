@@ -30,6 +30,90 @@ make dist                    # Create source + vendor tarballs
 make packaging               # Build RPM packages
 ```
 
+### Open Build Service (OBS)
+
+OBS builds binary RPM packages for multiple distributions. The project is
+configured for openSUSE Tumbleweed, Rocky Linux 9, and Rocky Linux 10 (x86_64
+and aarch64).
+
+```shell
+make osc-sync                # Sync spec/changes/_service to OBS checkout
+make osc-build               # Build for openSUSE Tumbleweed (default)
+make osc-build-rocky9        # Build for Rocky Linux 9
+make osc-build-rocky10       # Build for Rocky Linux 10
+```
+
+The `OBS_PROJECT` variable is auto-detected from your `~/.config/osc/oscrc`.
+Override it or other variables as needed:
+
+```shell
+make osc-build OBS_PROJECT=home:mjansen1972:ferroclass
+```
+
+See `make -C packaging/obs help` for all OBS targets and variables.
+
+## Releases
+
+Ferroclass uses a hybrid release strategy: source tarballs and checksums are
+published on GitHub Releases, while binary RPM packages are built and distributed
+through the Open Build Service.
+
+### Release Artifacts
+
+| Artifact                                        | Location         | Purpose                        |
+|-------------------------------------------------|------------------|--------------------------------|
+| `ferroclass-X.Y.Z.tar.gz`                      | GitHub Releases  | Source tarball                  |
+| `ferroclass-X.Y.Z-vendor.tar.gz`                | GitHub Releases  | Vendored Rust dependencies      |
+| `ferroclass-X.Y.Z.tar.gz.sha256`                 | GitHub Releases  | SHA256 checksum                  |
+| `ferroclass-X.Y.Z-vendor.tar.gz.sha256`          | GitHub Releases  | SHA256 checksum                  |
+| `ferroclass-X.Y.Z.tar.gz.asc`                    | GitHub Releases  | GPG signature (when available)   |
+| `ferroclass-X.Y.Z-vendor.tar.gz.asc`             | GitHub Releases  | GPG signature (when available)   |
+| Binary RPMs for Tumbleweed, Rocky 9, Rocky 10   | OBS repositories | Distro package installation     |
+
+### Release Process
+
+```shell
+# 1. Bump version
+make bump-version VERSION_NEW=X.Y.Z
+
+# 2. Update CHANGELOG.md manually
+
+# 3. Run quality gates and create release
+make release
+
+# 4. Sync to OBS and build
+make osc-sync
+cd ~/obs/home:mjansen1972:ferroclass/ferroclass && osc commit
+make osc-build-rocky9
+make osc-build
+```
+
+The `release` target runs: `commit` → `dist` → `checksums` → `tag` → `release-gh`
+→ `osc-sync`. It creates a GitHub Release with source tarballs and SHA256
+checksums, and syncs packaging files to the OBS checkout.
+
+### GPG Signing
+
+To add GPG signatures to release tarballs:
+
+```shell
+make sign GPG_KEY=<key-id>
+gh release upload vX.Y.Z packaging/rpm/ferroclass-X.Y.Z.tar.gz.asc \
+    packaging/rpm/ferroclass-X.Y.Z-vendor.tar.gz.asc
+```
+
+### Individual Make Targets
+
+| Target           | Purpose                                                    |
+|------------------|------------------------------------------------------------|
+| `bump-version`   | Update version in spec file and Cargo.toml (VERSION_NEW=) |
+| `dist`           | Create source and vendor tarballs                           |
+| `checksums`      | Generate SHA256 checksums for tarballs                       |
+| `sign`            | Sign tarballs with GPG (GPG_KEY=)                           |
+| `tag`            | Create and push git tag                                     |
+| `release-gh`     | Create GitHub Release with artifacts and changelog          |
+| `release`         | Full release pipeline                                       |
+
 ## Quick Start
 
 Create a minimal inventory:
