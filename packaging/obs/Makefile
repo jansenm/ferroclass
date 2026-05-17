@@ -3,11 +3,17 @@
 
 THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
+# Include local overrides first so ?= defaults don't override them.
+-include Makefile.local
+
 VERSION      := $(shell sed -n 's/^Version:\s*//p' ../rpm/ferroclass.spec)
 NAME         := $(shell sed -n 's/^Name:\s*//p' ../rpm/ferroclass.spec)
-# Override OBS_PROJECT to match your OBS project name.
-# Example: make osc-build OBS_PROJECT=home:mjansen1972:ferroclass
-OBS_PROJECT  ?= home:$(USER):$(NAME)
+# Detect OBS username from osc config (~/.config/osc/oscrc), fall back to $USER.
+# Create Makefile.local to override variables for your setup, e.g.:
+#   OBS_USER := myobsuser
+_OBS_USER_CFG := $(shell grep '^user=' ~/.config/osc/oscrc 2>/dev/null | head -1 | sed 's/^user=//')
+OBS_USER      ?= $(if $(_OBS_USER_CFG),$(_OBS_USER_CFG),$(USER))
+OBS_PROJECT  ?= home:$(OBS_USER):$(NAME)
 OBS_PACKAGE  ?= $(NAME)
 OBS_DIR      ?= $(HOME)/obs/$(OBS_PROJECT)/$(OBS_PACKAGE)
 
@@ -96,7 +102,8 @@ help-do:
 	@echo ""
 	@echo "VARIABLE VALUE"
 	@echo "--------------"
-	@echo "OBS_PROJECT  = $(OBS_PROJECT)"
+	@echo "OBS_USER      = $(OBS_USER)"
+	@echo "OBS_PROJECT   = $(OBS_PROJECT)"
 	@echo "OBS_PACKAGE   = $(OBS_PACKAGE)"
 	@echo "OBS_DIR       = $(OBS_DIR)"
 	@echo "OSC_REPO      = $(OSC_REPO)"
