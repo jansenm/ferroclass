@@ -5,6 +5,8 @@ THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 VERSION      := $(shell sed -n 's/^Version:\s*//p' ../rpm/ferroclass.spec)
 NAME         := $(shell sed -n 's/^Name:\s*//p' ../rpm/ferroclass.spec)
+# Override OBS_PROJECT to match your OBS project name.
+# Example: make osc-build OBS_PROJECT=home:mjansen1972:ferroclass
 OBS_PROJECT  ?= home:$(USER):$(NAME)
 OBS_PACKAGE  ?= $(NAME)
 OBS_DIR      ?= $(HOME)/obs/$(OBS_PROJECT)/$(OBS_PACKAGE)
@@ -38,7 +40,7 @@ osc-checkout-do:
 ## osc-sync             » sync spec, changes, and _service to OBS checkout
 osc-sync: osc-sync-start osc-sync-do osc-sync-end
 osc-sync-do:
-	mkdir -p $(OBS_DIR)
+	@test -d $(OBS_DIR)/.osc || (echo "ERROR: $(OBS_DIR) is not an OBS checkout. Run 'make osc-checkout' first or set OBS_PROJECT correctly." && exit 1)
 	cp $(RPM_DIR)/ferroclass.spec $(OBS_DIR)/ferroclass.spec
 	cp $(RPM_DIR)/ferroclass.changes $(OBS_DIR)/ferroclass.changes
 	sed -e 's/@VERSION@/$(VERSION)/g' _service.in > $(OBS_DIR)/_service
