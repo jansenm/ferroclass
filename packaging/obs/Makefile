@@ -43,13 +43,22 @@ osc-checkout: osc-checkout-start osc-checkout-do osc-checkout-end
 osc-checkout-do:
 	osc checkout $(OBS_PROJECT) $(OBS_PACKAGE)
 
-## osc-sync             » sync spec, changes, and _service to OBS checkout
+## osc-sync             » sync spec, changes, _service, and source tarballs to OBS checkout
 osc-sync: osc-sync-start osc-sync-do osc-sync-end
 osc-sync-do:
 	@test -d $(OBS_DIR)/.osc || (echo "ERROR: $(OBS_DIR) is not an OBS checkout. Run 'make osc-checkout' first or set OBS_PROJECT correctly." && exit 1)
 	cp $(RPM_DIR)/ferroclass.spec $(OBS_DIR)/ferroclass.spec
 	cp $(RPM_DIR)/ferroclass.changes $(OBS_DIR)/ferroclass.changes
 	sed -e 's/@VERSION@/$(VERSION)/g' _service.in > $(OBS_DIR)/_service
+	cp $(RPM_DIR)/$(NAME)-$(VERSION).tar.gz $(OBS_DIR)/
+	cp $(RPM_DIR)/$(NAME)-$(VERSION)-vendor.tar.gz $(OBS_DIR)/
+	@echo "Removing stale tarballs from OBS checkout..."
+	@cd $(OBS_DIR) && for f in $(NAME)-[0-9]*.tar.gz; do \
+		case "$$f" in \
+			$(NAME)-$(VERSION).tar.gz|$(NAME)-$(VERSION)-vendor.tar.gz) ;; \
+			*) rm -v "$$f" ;; \
+		esac; \
+	done
 
 ## osc-add              » add/remove files in OBS checkout
 osc-add: osc-add-start osc-add-do osc-add-end

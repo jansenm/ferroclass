@@ -102,18 +102,21 @@ dist: dist-start vendor dist-do dist-end
 dist-do:
 	git -C . archive --format=tar.gz --prefix=$(NAME)-$(VERSION)/ HEAD > $(TARBALL)
 	tar czf $(VENDOR_TARBALL) -C . vendor/ .cargo/config.toml
+	@ls -alF $(TARBALL) $(VENDOR_TARBALL)
 
 ## checksums          » generate SHA256 checksums for tarballs
-checksums: checksums-start dist checksums-do checksums-end
+checksums: checksums-start checksums-do checksums-end
 checksums-do:
 	sha256sum $(TARBALL) > $(TARBALL_SHA256)
 	sha256sum $(VENDOR_TARBALL) > $(VENDOR_SHA256)
+	@ls -alF $(TARBALL_SHA256) $(VENDOR_SHA256)
 
 ## sign               » sign tarballs with GPG (requires GPG_KEY)
-sign: sign-start dist sign-do sign-end
+sign: sign-start sign-do sign-end
 sign-do:
 	gpg --armor --detach-sign -u $(GPG_KEY) -o $(TARBALL_ASC) $(TARBALL)
 	gpg --armor --detach-sign -u $(GPG_KEY) -o $(VENDOR_ASC) $(VENDOR_TARBALL)
+	@ls -alF $(TARBALL_ASC) $(VENDOR_ASC)
 
 ## tag                » create and push git tag for current version
 tag: tag-start tag-do tag-end
