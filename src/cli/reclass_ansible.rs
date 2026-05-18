@@ -90,8 +90,8 @@ pub struct AnsibleOptions {
 #[derive(Parser, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 #[command(
-    name = "reclass-ansible",
-    bin_name = "reclass-ansible",
+    name = "ferroclass-ansible",
+    bin_name = "ferroclass-ansible",
     version,
     about = "Ansible dynamic inventory adapter for reclass",
     after_help = "This binary implements the Ansible dynamic inventory protocol.\n\

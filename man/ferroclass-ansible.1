@@ -1,12 +1,12 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH reclass-salt 1  "reclass-salt 0.9.0" 
+.TH ferroclass-ansible 1  "ferroclass-ansible 0.10.0" 
 .SH NAME
-reclass\-salt \- Salt adapter for reclass
+ferroclass\-ansible \- Ansible dynamic inventory adapter for reclass
 .SH SYNOPSIS
-\fBreclass\-salt\fR [\fB\-v\fR|\fB\-\-verbose\fR] [\fB\-s\fR|\fB\-\-storage\-type\fR] [\fB\-b\fR|\fB\-\-inventory\-base\-uri\fR] [\fB\-u\fR|\fB\-\-nodes\-uri\fR] [\fB\-c\fR|\fB\-\-classes\-uri\fR] [\fB\-\-parameter\-key\-style\fR] [\fB\-a\fR|\fB\-\-compose\-node\-name\fR] [\fB\-z\fR|\fB\-\-ignore\-class\-notfound\fR] [\fB\-x\fR|\fB\-\-ignore\-class\-notfound\-regexp\fR] [\fB\-o\fR|\fB\-\-output\fR] [\fB\-y\fR|\fB\-\-pretty\-print\fR] [\fB\-\-output\-sorted\fR] [\fB\-r\fR|\fB\-\-no\-refs\fR] [\fB\-0\fR|\fB\-\-multiple\-errors\fR] [\fB\-1\fR|\fB\-\-single\-error\fR] [\fB\-t\fR|\fB\-\-top\fR] [\fB\-p\fR|\fB\-\-pillar\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] 
+\fBferroclass\-ansible\fR [\fB\-v\fR|\fB\-\-verbose\fR] [\fB\-\-applications\-postfix\fR] [\fB\-s\fR|\fB\-\-storage\-type\fR] [\fB\-b\fR|\fB\-\-inventory\-base\-uri\fR] [\fB\-u\fR|\fB\-\-nodes\-uri\fR] [\fB\-c\fR|\fB\-\-classes\-uri\fR] [\fB\-\-parameter\-key\-style\fR] [\fB\-a\fR|\fB\-\-compose\-node\-name\fR] [\fB\-z\fR|\fB\-\-ignore\-class\-notfound\fR] [\fB\-x\fR|\fB\-\-ignore\-class\-notfound\-regexp\fR] [\fB\-o\fR|\fB\-\-output\fR] [\fB\-y\fR|\fB\-\-pretty\-print\fR] [\fB\-\-output\-sorted\fR] [\fB\-0\fR|\fB\-\-multiple\-errors\fR] [\fB\-1\fR|\fB\-\-single\-error\fR] [\fB\-l\fR|\fB\-\-list\fR] [\fB\-t\fR|\fB\-\-host\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] 
 .SH DESCRIPTION
-Salt adapter for reclass
+Ansible dynamic inventory adapter for reclass
 .SH OPTIONS
 .TP
 \fB\-v\fR, \fB\-\-verbose\fR
@@ -17,6 +17,10 @@ Print help (see a summary with \*(Aq\-h\*(Aq)
 .TP
 \fB\-V\fR, \fB\-\-version\fR
 Print version
+.SH "ANSIBLE OPTIONS"
+.TP
+\fB\-\-applications\-postfix\fR \fI<APPLICATIONS_POSTFIX>\fR [default: _hosts]
+postfix to append to applications to turn them into groups
 .SH "DATABASE OPTIONS"
 .TP
 \fB\-s\fR, \fB\-\-storage\-type\fR \fI<STORAGE_TYPE>\fR
@@ -64,8 +68,8 @@ ignore classes that are not found instead of raising an error
 regexp pattern for class names to ignore when not found (can be specified multiple times)
 .SH "OUTPUT OPTIONS"
 .TP
-\fB\-o\fR, \fB\-\-output\fR \fI<OUTPUT>\fR [default: yaml]
-output format (default: yaml)
+\fB\-o\fR, \fB\-\-output\fR \fI<OUTPUT>\fR [default: json]
+output format (default: json)
 .br
 
 .br
@@ -83,9 +87,6 @@ pretty\-print output (indented, newlines)
 \fB\-\-output\-sorted\fR
 sort keys alphabetically in output
 .TP
-\fB\-r\fR, \fB\-\-no\-refs\fR
-suppress YAML anchors/aliases in output
-.TP
 \fB\-0\fR, \fB\-\-multiple\-errors\fR
 group multiple resolve errors and report them together instead of failing on the first error
 .TP
@@ -93,14 +94,14 @@ group multiple resolve errors and report them together instead of failing on the
 report only the first resolve error instead of grouping all errors
 .SH MODES
 .TP
-\fB\-t\fR, \fB\-\-top\fR
-output the state tops (environment to node to applications mapping)
+\fB\-l\fR, \fB\-\-list\fR
+output the entire inventory
 .TP
-\fB\-p\fR, \fB\-\-pillar\fR \fI<MINION_ID>\fR
-output pillar data for a specific minion
+\fB\-t\fR, \fB\-\-host\fR \fI<HOSTNAME>\fR
+output host variables for a specific host
 .SH EXTRA
-This binary provides Salt\-compatible output.
-Use \-\-top to output the state tops (environment → node → applications).
-Use \-\-pillar MINION_ID to output pillar data for a specific minion.
+This binary implements the Ansible dynamic inventory protocol.
+Use \-\-list to output the entire inventory as JSON.
+Use \-\-host HOSTNAME to output host variables for a specific node.
 .SH VERSION
-v0.9.0
+v0.10.0

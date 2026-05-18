@@ -22,8 +22,9 @@ TARBALL_ASC     := $(TARBALL).asc
 VENDOR_ASC      := $(VENDOR_TARBALL).asc
 GPG_KEY          ?= mike@michael-jansen.biz
 GH_REPO          ?= jansenm/ferroclass
+GH_REMOTE        ?= github
 
-MANPAGES        := man/reclass-ansible.1 man/reclass-salt.1 man/reclass.1
+MANPAGES        := man/ferroclass-ansible.1 man/ferroclass-salt.1 man/ferroclass.1
 
 TARGETS         := all all-do all-end \
                    build build-do build-end \
@@ -118,7 +119,7 @@ sign-do:
 tag: tag-start tag-do tag-end
 tag-do:
 	git tag -a v$(VERSION) -m "Release v$(VERSION)"
-	git push origin v$(VERSION)
+	git push $(GH_REMOTE) v$(VERSION)
 
 ## release-gh         » create GitHub Release with tarballs and checksums
 release-gh: release-gh-start release-gh-do release-gh-end
@@ -154,35 +155,35 @@ install-do:
 install-bin: install-bin-start build-release install-bin-do install-bin-end
 install-bin-do:
 	$(INSTALL) -d $(DESTDIR)$(BINDIR)
-	$(INSTALL_PROGRAM) target/release/reclass $(DESTDIR)$(BINDIR)/reclass
-	$(INSTALL_PROGRAM) target/release/reclass-ansible $(DESTDIR)$(BINDIR)/reclass-ansible
-	$(INSTALL_PROGRAM) target/release/reclass-salt $(DESTDIR)$(BINDIR)/reclass-salt
+	$(INSTALL_PROGRAM) target/release/ferroclass $(DESTDIR)$(BINDIR)/ferroclass
+	$(INSTALL_PROGRAM) target/release/ferroclass-ansible $(DESTDIR)$(BINDIR)/ferroclass-ansible
+	$(INSTALL_PROGRAM) target/release/ferroclass-salt $(DESTDIR)$(BINDIR)/ferroclass-salt
 
 ## install-strip       » install stripped binaries
 install-strip: install-strip-start build-release install-strip-do install-strip-end
 install-strip-do:
 	$(INSTALL) -d $(DESTDIR)$(BINDIR)
-	$(INSTALL_PROGRAM) -s target/release/reclass $(DESTDIR)$(BINDIR)/reclass
-	$(INSTALL_PROGRAM) -s target/release/reclass-ansible $(DESTDIR)$(BINDIR)/reclass-ansible
-	$(INSTALL_PROGRAM) -s target/release/reclass-salt $(DESTDIR)$(BINDIR)/reclass-salt
+	$(INSTALL_PROGRAM) -s target/release/ferroclass $(DESTDIR)$(BINDIR)/ferroclass
+	$(INSTALL_PROGRAM) -s target/release/ferroclass-ansible $(DESTDIR)$(BINDIR)/ferroclass-ansible
+	$(INSTALL_PROGRAM) -s target/release/ferroclass-salt $(DESTDIR)$(BINDIR)/ferroclass-salt
 
 ## install-man         » install man pages
 install-man: install-man-start $(MANPAGES) install-man-do install-man-end
 install-man-do:
 	$(INSTALL) -d $(DESTDIR)$(MANDIR)/man1
-	$(INSTALL_DATA) man/reclass.1 $(DESTDIR)$(MANDIR)/man1/reclass.1
-	$(INSTALL_DATA) man/reclass-ansible.1 $(DESTDIR)$(MANDIR)/man1/reclass-ansible.1
-	$(INSTALL_DATA) man/reclass-salt.1 $(DESTDIR)$(MANDIR)/man1/reclass-salt.1
+	$(INSTALL_DATA) man/ferroclass.1 $(DESTDIR)$(MANDIR)/man1/ferroclass.1
+	$(INSTALL_DATA) man/ferroclass-ansible.1 $(DESTDIR)$(MANDIR)/man1/ferroclass-ansible.1
+	$(INSTALL_DATA) man/ferroclass-salt.1 $(DESTDIR)$(MANDIR)/man1/ferroclass-salt.1
 
 ## uninstall           » remove installed files
 uninstall: uninstall-start uninstall-do uninstall-end
 uninstall-do:
-	rm -f $(DESTDIR)$(BINDIR)/reclass
-	rm -f $(DESTDIR)$(BINDIR)/reclass-ansible
-	rm -f $(DESTDIR)$(BINDIR)/reclass-salt
-	rm -f $(DESTDIR)$(MANDIR)/man1/reclass.1*
-	rm -f $(DESTDIR)$(MANDIR)/man1/reclass-ansible.1*
-	rm -f $(DESTDIR)$(MANDIR)/man1/reclass-salt.1*
+	rm -f $(DESTDIR)$(BINDIR)/ferroclass
+	rm -f $(DESTDIR)$(BINDIR)/ferroclass-ansible
+	rm -f $(DESTDIR)$(BINDIR)/ferroclass-salt
+	rm -f $(DESTDIR)$(MANDIR)/man1/ferroclass.1*
+	rm -f $(DESTDIR)$(MANDIR)/man1/ferroclass-ansible.1*
+	rm -f $(DESTDIR)$(MANDIR)/man1/ferroclass-salt.1*
 
 ##
 ## HELPER
@@ -311,6 +312,7 @@ help:
 	@echo "NAME             = $(NAME)"
 	@echo "GPG_KEY          = $(GPG_KEY)"
 	@echo "GH_REPO          = $(GH_REPO)"
+	@echo "GH_REMOTE        = $(GH_REMOTE)"
 
 ##
 ## VARIABLES
@@ -327,5 +329,6 @@ help:
 ## NAME                 » package name (from spec file)
 ## GPG_KEY              » GPG key ID for signing releases
 ## GH_REPO              » GitHub repository (owner/repo format)
+## GH_REMOTE            » git remote name for GitHub (default: github)
 ##
 ## VERBOSE				» print execute commands

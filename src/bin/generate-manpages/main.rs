@@ -3,8 +3,8 @@
 
 //! Generate man pages from CLI definitions.
 //!
-//! This binary generates roff-formatted man pages for the reclass,
-//! reclass-ansible, and reclass-salt binaries using clap_mangen.
+//! This binary generates roff-formatted man pages for the ferroclass,
+//! ferroclass-ansible, and ferroclass-salt binaries using clap_mangen.
 //!
 //! Usage: cargo run --bin generate-manpages --features manpages
 
@@ -23,9 +23,9 @@ fn main() {
     fs::create_dir_all(out_dir).expect("failed to create man/ directory");
 
     let commands: Vec<(&str, clap::Command)> = vec![
-        ("reclass", ReclassCli::command()),
-        ("reclass-ansible", AnsibleCli::command()),
-        ("reclass-salt", SaltCli::command()),
+        ("ferroclass", ReclassCli::command()),
+        ("ferroclass-ansible", AnsibleCli::command()),
+        ("ferroclass-salt", SaltCli::command()),
     ];
 
     for (name, cmd) in commands {

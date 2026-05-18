@@ -6,6 +6,9 @@ Ferroclass is a lightweight configuration management database (CMDB) implementat
 reimplementation of [reclass](https://reclass.pantsfullofunix.net/) in Rust, with full CLI
 compatibility for the `reclass`, `reclass-ansible`, and `reclass-salt` commands.
 
+The installed binaries are `ferroclass`, `ferroclass-ansible`, and `ferroclass-salt`,
+allowing coexistence with the Python reclass package on the same system.
+
 Common use cases include replacing the built-in inventory of Ansible, acting as an external node
 classifier for Puppet, or managing configuration for any system that needs hierarchical data with
 inheritance and interpolation.
@@ -20,8 +23,8 @@ make install                 # Installs to /usr/local by default
 make install DESTDIR=/tmp/pkg  # For packaging
 ```
 
-Binaries: `reclass`, `reclass-ansible`, `reclass-salt`
-Man pages: `man reclass`, `man reclass-ansible`, `man reclass-salt`
+Binaries: `ferroclass`, `ferroclass-ansible`, `ferroclass-salt`
+Man pages: `man ferroclass`, `man ferroclass-ansible`, `man ferroclass-salt`
 
 ### RPM Packages
 
@@ -150,10 +153,10 @@ parameters:
 Run it:
 
 ```shell
-reclass --nodeinfo web --inventory-base-uri ./inventory
-reclass --inventory --output json --inventory-base-uri ./inventory
-reclass-ansible --list --inventory-base-uri ./inventory
-reclass-salt --top --inventory-base-uri ./inventory
+ferroclass --nodeinfo web --inventory-base-uri ./inventory
+ferroclass --inventory --output json --inventory-base-uri ./inventory
+ferroclass-ansible --list --inventory-base-uri ./inventory
+ferroclass-salt --top --inventory-base-uri ./inventory
 ```
 
 For ready-to-use minimal examples, see the [`inventories/example/`](inventories/example)
@@ -592,9 +595,9 @@ CLI arguments take precedence over the config file.
 See the man pages for full reference:
 
 ```shell
-man reclass
-man reclass-ansible
-man reclass-salt
+man ferroclass
+man ferroclass-ansible
+man ferroclass-salt
 ```
 
 ## Reclass Compatibility

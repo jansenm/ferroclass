@@ -8,6 +8,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-05-18
+
+### Changed
+
+- **Renamed binaries to avoid conflicts with Python reclass.** The installed
+  binaries are now `ferroclass`, `ferroclass-ansible`, and `ferroclass-salt`
+  (previously `reclass`, `reclass-ansible`, `reclass-salt`). This allows
+  ferroclass to coexist alongside the Python reclass package on the same
+  system without file conflicts on `/usr/bin/reclass*`. RPM sub-packages are
+  also renamed: `ferroclass-ansible` and `ferroclass-salt`.
+- Added `GH_REMOTE` Makefile variable (default: `github`) for configuring
+  the git remote name used by the `tag` target.
+
 ## [0.9.0] - 2026-05-16
 
 First public release. Feature-complete reimplementation of Python reclass

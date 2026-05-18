@@ -87,8 +87,8 @@ pub struct StorageOptions {
 #[derive(Parser, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 #[command(
-    name = "reclass",
-    bin_name = "reclass",
+    name = "ferroclass",
+    bin_name = "ferroclass",
     version,
     about = "Hierarchical inventory management tool (reclass compatible)",
     after_help = "Use --inventory to output the entire inventory as YAML or JSON.\n\

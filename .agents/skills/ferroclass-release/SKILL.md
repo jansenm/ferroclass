@@ -53,6 +53,7 @@ The spec file is the **single source of truth** for version numbers.
 | `VERSION`   | Read from spec file             | Current package version                       |
 | `GPG_KEY`   | `mike@michael-jansen.biz`       | GPG key ID for signing release tarballs       |
 | `GH_REPO`   | `jansenm/ferroclass`            | GitHub repository for `gh release create`     |
+| `GH_REMOTE` | `github`                        | Git remote name for GitHub (used by `tag`)    |
 | `OBS_USER`   | Auto-detected from `~/.config/osc/oscrc` | OBS username                      |
 | `OBS_PROJECT`| `home:$(OBS_USER):ferroclass`  | OBS project name                              |
 | `OSC_REPO`  | `openSUSE_Tumbleweed`           | OBS build repository                          |
@@ -203,7 +204,7 @@ Release. This minimizes the supply chain attack surface.
    commit that passed all quality gates.
 3. **Do NOT forget to regenerate man pages.** The `man/*.1` files embed the
    version.
-4. **Do NOT publish a tag without pushing it.** `git push origin vX.Y.Z` must
+4. **Do NOT publish a tag without pushing it.** `git push $(GH_REMOTE) vX.Y.Z` must
    succeed before the release is considered public.
 5. **Do NOT ignore spec `%changelog`.** Even for internal releases, changelog
    entries are required for RPM builds and audit trails.

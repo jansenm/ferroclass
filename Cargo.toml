@@ -1,6 +1,6 @@
 [package]
 name = "ferroclass"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2024"
 license = "MPL-2.0"
 description = "Hierarchical inventory management tool (reclass compatible)"
@@ -39,15 +39,15 @@ version = "0.2"
 optional = true
 
 [[bin]]
-name = "reclass"
+name = "ferroclass"
 path = "src/bin/reclass/main.rs"
 
 [[bin]]
-name = "reclass-ansible"
+name = "ferroclass-ansible"
 path = "src/bin/reclass-ansible/main.rs"
 
 [[bin]]
-name = "reclass-salt"
+name = "ferroclass-salt"
 path = "src/bin/reclass-salt/main.rs"
 
 [[bin]]

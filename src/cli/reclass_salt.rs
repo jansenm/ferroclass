@@ -87,8 +87,8 @@ pub struct OutputOptions {
 #[derive(Parser, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 #[command(
-    name = "reclass-salt",
-    bin_name = "reclass-salt",
+    name = "ferroclass-salt",
+    bin_name = "ferroclass-salt",
     version,
     about = "Salt adapter for reclass",
     after_help = "This binary provides Salt-compatible output.\n\
