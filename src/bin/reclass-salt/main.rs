@@ -33,9 +33,9 @@ enum Error {
     },
     #[snafu(display("error applying configuration options"))]
     ApplyConfig { source: configuration::ApplyError },
-    #[snafu(display("error loading top data"))]
+    #[snafu(transparent)]
     Top { source: TopError },
-    #[snafu(display("error loading pillar data"))]
+    #[snafu(transparent)]
     Pillar { source: PillarError },
 }
 
@@ -83,7 +83,7 @@ fn main() {
             top: true,
             pillar: None,
         } => {
-            let top_data = match salt::build_top(&config).context(TopSnafu {}) {
+            let top_data = match salt::build_top(&config).map_err(Error::from) {
                 Ok(data) => data,
                 Err(e) => {
                     eprintln!("{}", format_error_chain(&e));
@@ -102,7 +102,7 @@ fn main() {
             top: false,
             pillar: Some(ref minion_id),
         } => {
-            let pillar_data = match salt::build_pillar(&config, minion_id).context(PillarSnafu {}) {
+            let pillar_data = match salt::build_pillar(&config, minion_id).map_err(Error::from) {
                 Ok(data) => data,
                 Err(e) => {
                     eprintln!("{}", format_error_chain(&e));

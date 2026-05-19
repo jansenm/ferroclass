@@ -13,7 +13,7 @@ use super::{ReclassMap, YamlOutput};
 
 #[derive(Debug, Snafu)]
 pub enum InventoryError {
-    #[snafu(display("error loading inventory"))]
+    #[snafu(transparent)]
     InventoryLoad { source: inv::Error },
 }
 
@@ -168,7 +168,7 @@ impl InventoryOutput {
     ) -> Result<Self, InventoryError> {
         let inv_map = inventory
             .build_inventory_map()
-            .context(InventoryLoadSnafu {})?;
+            .map_err(InventoryError::from)?;
 
         let mut nodes = LinkedHashMap::new();
         let mut classes: LinkedHashMap<String, Vec<String>> = LinkedHashMap::new();

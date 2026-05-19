@@ -281,8 +281,10 @@ pub enum Error {
     ClassNotFound { class_name: String },
     #[snafu(display("node '{node_name}' not found"))]
     NodeNotFound { node_name: String },
-    #[snafu(display("interpolation error"))]
-    InterpolationError { source: interpolation::Error },
+    #[snafu(transparent)]
+    Interpolation { source: interpolation::Error },
+    #[snafu(transparent)]
+    ValueMerge { source: value_merge::Error },
     #[snafu(display("node '{name}' defined in both '{existing_uri}' and '{new_uri}'"))]
     DuplicateNodeName {
         name: String,
@@ -299,10 +301,8 @@ impl From<merge::Error> for Error {
                 class_name,
                 source: _,
             } => Error::ClassNotFound { class_name },
-            merge::Error::InterpolationError { source } => Error::InterpolationError { source },
-            merge::Error::MergeError { source } => Error::InterpolationError {
-                source: interpolation::Error::TypeMerge { source },
-            },
+            merge::Error::Interpolation { source } => Error::Interpolation { source },
+            merge::Error::ValueMerge { source } => Error::ValueMerge { source },
         }
     }
 }
@@ -3177,7 +3177,7 @@ mod tests {
         let result = inv_with_config.merge_node("node1");
         assert!(result.is_err(), "should error on unresolvable reference");
         match result.unwrap_err() {
-            Error::InterpolationError { source } => match source {
+            Error::Interpolation { source } => match source {
                 interpolation::Error::ReferenceNotFound { path } => {
                     assert_eq!(path, "missing_ref");
                 }
@@ -3186,7 +3186,7 @@ mod tests {
                     other
                 ),
             },
-            e => panic!("Expected InterpolationError, got {:?}", e),
+            e => panic!("Expected Interpolation, got {:?}", e),
         }
     }
 
@@ -3218,7 +3218,7 @@ mod tests {
         let result = inv_with_config.merge_node("node1");
         assert!(result.is_err(), "should error on unresolvable references");
         match result.unwrap_err() {
-            Error::InterpolationError { source } => match source {
+            Error::Interpolation { source } => match source {
                 interpolation::Error::ResolveErrorList { errors } => {
                     assert!(
                         errors.len() >= 2,
@@ -3231,7 +3231,7 @@ mod tests {
                     other
                 ),
             },
-            e => panic!("Expected InterpolationError, got {:?}", e),
+            e => panic!("Expected Interpolation, got {:?}", e),
         }
     }
 
@@ -3263,7 +3263,7 @@ mod tests {
         let result = inv_with_config.merge_node("node1");
         assert!(result.is_err(), "should error on unresolvable reference");
         match result.unwrap_err() {
-            Error::InterpolationError { source } => match source {
+            Error::Interpolation { source } => match source {
                 interpolation::Error::ReferenceNotFound { path } => {
                     assert!(
                         path == "ref_a" || path == "ref_b",
@@ -3276,7 +3276,7 @@ mod tests {
                     other
                 ),
             },
-            e => panic!("Expected InterpolationError, got {:?}", e),
+            e => panic!("Expected Interpolation, got {:?}", e),
         }
     }
 
@@ -3318,7 +3318,7 @@ mod tests {
         // The error should be ReferenceNotFound (ResolveErrorList with collected errors,
         // since both alpha and beta reference missing keys)
         match result.unwrap_err() {
-            Error::InterpolationError { source } => match source {
+            Error::Interpolation { source } => match source {
                 interpolation::Error::ResolveErrorList { errors } => {
                     assert!(
                         errors.len() >= 2,
@@ -3333,7 +3333,7 @@ mod tests {
                     other
                 ),
             },
-            e => panic!("Expected InterpolationError, got {:?}", e),
+            e => panic!("Expected Interpolation, got {:?}", e),
         }
     }
 

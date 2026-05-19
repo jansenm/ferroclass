@@ -23,10 +23,10 @@ pub enum Error {
         class_name: String,
         source: interpolation::Error,
     },
-    #[snafu(display("interpolation error"))]
-    InterpolationError { source: interpolation::Error },
-    #[snafu(display("merge error"))]
-    MergeError {
+    #[snafu(transparent)]
+    Interpolation { source: interpolation::Error },
+    #[snafu(transparent)]
+    ValueMerge {
         source: crate::inventory::value_merge::Error,
     },
 }
@@ -76,7 +76,7 @@ fn merge_parameters(
     config: &MergeConfig,
 ) -> Result<ParametersType, Error> {
     crate::inventory::value_merge::merge_hash_direct(parent, child, config)
-        .map_err(|source| Error::MergeError { source })
+        .map_err(|source| Error::ValueMerge { source })
 }
 
 fn merge_descent_into(
@@ -365,10 +365,10 @@ fn merge_node_impl(
     match (params_result, exports_result) {
         (Ok(()), Ok(())) => {}
         (Err(e), Ok(())) => {
-            return Err(Error::InterpolationError { source: e });
+            return Err(Error::Interpolation { source: e });
         }
         (Ok(()), Err(e)) => {
-            return Err(Error::InterpolationError { source: e });
+            return Err(Error::Interpolation { source: e });
         }
         (Err(params_err), Err(exports_err)) => match (params_err, exports_err) {
             (
@@ -378,12 +378,12 @@ fn merge_node_impl(
                 interpolation::Error::ResolveErrorList { errors: el },
             ) => {
                 combined.merge(el);
-                return Err(Error::InterpolationError {
+                return Err(Error::Interpolation {
                     source: interpolation::Error::ResolveErrorList { errors: combined },
                 });
             }
             (params_err, _) => {
-                return Err(Error::InterpolationError { source: params_err });
+                return Err(Error::Interpolation { source: params_err });
             }
         },
     }

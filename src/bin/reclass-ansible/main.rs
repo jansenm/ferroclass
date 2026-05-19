@@ -32,9 +32,9 @@ enum Error {
     Load {
         source: ferroclass::configuration::Error,
     },
-    #[snafu(display("error loading ansible inventory"))]
+    #[snafu(transparent)]
     Inventory { source: AnsibleInventoryError },
-    #[snafu(display("error loading host vars"))]
+    #[snafu(transparent)]
     HostVars { source: HostVarsError },
 }
 
@@ -84,7 +84,7 @@ fn main() {
             let timestamp = format_timestamp();
             let inventory =
                 match ansible::build_inventory(&config, &applications_postfix, &timestamp)
-                    .context(InventorySnafu {})
+                    .map_err(Error::from)
                 {
                     Ok(inv) => inv,
                     Err(e) => {
@@ -106,7 +106,7 @@ fn main() {
         } => {
             let timestamp = format_timestamp();
             let host_vars = match ansible::build_host_vars(&config, hostname, &timestamp)
-                .context(HostVarsSnafu {})
+                .map_err(Error::from)
             {
                 Ok(vars) => vars,
                 Err(e) => {

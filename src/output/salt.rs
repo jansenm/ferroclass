@@ -15,7 +15,7 @@ use super::ansible::{self, HostVars};
 
 #[derive(Debug, Snafu)]
 pub enum TopError {
-    #[snafu(display("error loading inventory"))]
+    #[snafu(transparent)]
     TopInventoryLoad { source: inv::Error },
 }
 
@@ -93,7 +93,7 @@ impl YamlOutput for TopData {
 
 #[derive(Debug, Snafu)]
 pub enum PillarError {
-    #[snafu(display("error loading inventory"))]
+    #[snafu(transparent)]
     PillarInventoryLoad { source: inv::Error },
     #[snafu(display("node '{node_name}' not found"))]
     NodeNotFound { node_name: String },
@@ -145,14 +145,12 @@ pub fn build_top(config: &Options) -> Result<TopData, TopError> {
     let merge_config = config.build_merge_config();
     let ignore_failed_node = merge_config.inventory_ignore_failed_node;
     let ignore_failed_render = merge_config.inventory_ignore_failed_render;
-    let mut inventory = inv::load(&config.storage_options).context(TopInventoryLoadSnafu {})?;
+    let mut inventory = inv::load(&config.storage_options).map_err(TopError::from)?;
     inventory.set_class_mappings(config.class_mappings.clone());
     inventory.set_class_mappings_match_path(config.class_mappings_match_path);
     inventory.set_merge_config(merge_config);
 
-    let inv_map = inventory
-        .build_inventory_map()
-        .context(TopInventoryLoadSnafu {})?;
+    let inv_map = inventory.build_inventory_map().map_err(TopError::from)?;
 
     let mut environments: LinkedHashMap<String, LinkedHashMap<String, Vec<String>>> =
         LinkedHashMap::new();
@@ -208,7 +206,7 @@ pub fn build_top(config: &Options) -> Result<TopData, TopError> {
 pub fn build_pillar(config: &Options, minion_id: &str) -> Result<HostVars, PillarError> {
     let merge_config = config.build_merge_config();
     let ignore_failed_render = merge_config.inventory_ignore_failed_render;
-    let mut inventory = inv::load(&config.storage_options).context(PillarInventoryLoadSnafu {})?;
+    let mut inventory = inv::load(&config.storage_options).map_err(PillarError::from)?;
     inventory.set_class_mappings(config.class_mappings.clone());
     inventory.set_class_mappings_match_path(config.class_mappings_match_path);
     inventory.set_merge_config(merge_config);
@@ -233,9 +231,7 @@ pub fn build_pillar(config: &Options, minion_id: &str) -> Result<HostVars, Pilla
     };
 
     let merged = if has_inv_query {
-        let inv_map = inventory
-            .build_inventory_map()
-            .context(PillarInventoryLoadSnafu {})?;
+        let inv_map = inventory.build_inventory_map().map_err(PillarError::from)?;
         match inventory.merge_node_with_inventory(minion_id, &inv_map) {
             Ok(n) => n,
             Err(e) => {

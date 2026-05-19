@@ -14,7 +14,7 @@ use super::{ReclassMap, YamlOutput};
 
 #[derive(Debug, Snafu)]
 pub enum AnsibleInventoryError {
-    #[snafu(display("error loading ansible inventory"))]
+    #[snafu(transparent)]
     InventoryLoad { source: inv::Error },
 }
 
@@ -245,7 +245,7 @@ impl YamlOutput for AnsibleNodeInfo {
 
 #[derive(Debug, Snafu)]
 pub enum HostVarsError {
-    #[snafu(display("error loading ansible inventory"))]
+    #[snafu(transparent)]
     HostVarsInventoryLoad { source: inv::Error },
     #[snafu(display("node '{node_name}' not found"))]
     NodeNotFound { node_name: String },
@@ -314,14 +314,14 @@ pub fn build_inventory(
     let merge_config = config.build_merge_config();
     let ignore_failed_node = merge_config.inventory_ignore_failed_node;
     let ignore_failed_render = merge_config.inventory_ignore_failed_render;
-    let mut inventory = inv::load(&config.storage_options).context(InventoryLoadSnafu {})?;
+    let mut inventory = inv::load(&config.storage_options).map_err(AnsibleInventoryError::from)?;
     inventory.set_class_mappings(config.class_mappings.clone());
     inventory.set_class_mappings_match_path(config.class_mappings_match_path);
     inventory.set_merge_config(merge_config);
 
     let inv_map = inventory
         .build_inventory_map()
-        .context(InventoryLoadSnafu {})?;
+        .map_err(AnsibleInventoryError::from)?;
 
     let mut groups: LinkedHashMap<String, Vec<String>> = LinkedHashMap::new();
     let mut hostvars: LinkedHashMap<String, AnsibleNodeInfo> = LinkedHashMap::new();
@@ -417,8 +417,7 @@ pub fn build_host_vars(
 ) -> Result<AnsibleNodeInfo, HostVarsError> {
     let merge_config = config.build_merge_config();
     let ignore_failed_render = merge_config.inventory_ignore_failed_render;
-    let mut inventory =
-        inv::load(&config.storage_options).context(HostVarsInventoryLoadSnafu {})?;
+    let mut inventory = inv::load(&config.storage_options).map_err(HostVarsError::from)?;
     inventory.set_class_mappings(config.class_mappings.clone());
     inventory.set_class_mappings_match_path(config.class_mappings_match_path);
     inventory.set_merge_config(merge_config);
@@ -445,7 +444,7 @@ pub fn build_host_vars(
     let merged = if has_inv_query {
         let inv_map = inventory
             .build_inventory_map()
-            .context(HostVarsInventoryLoadSnafu {})?;
+            .map_err(HostVarsError::from)?;
 
         match inventory.merge_node_with_inventory(hostname, &inv_map) {
             Ok(n) => n,

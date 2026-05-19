@@ -10,9 +10,9 @@ use snafu::prelude::*;
 
 #[derive(Debug, Snafu)]
 pub(crate) enum Error {
-    #[snafu(display("error loading inventory"))]
+    #[snafu(transparent)]
     Inventory { source: inv::Error },
-    #[snafu(display("error building inventory output"))]
+    #[snafu(transparent)]
     InventoryLoad { source: InventoryError },
     #[snafu(display("node '{node_name}' not found"))]
     NodeNotFound { node_name: String },
@@ -31,7 +31,7 @@ pub(crate) fn inventory_main(config: Options) -> Result<(), Error> {
     let merge_config = config.build_merge_config();
     let ignore_failed_node = merge_config.inventory_ignore_failed_node;
     let ignore_failed_render = merge_config.inventory_ignore_failed_render;
-    let mut inventory_obj = inv::load(&config.storage_options).context(InventorySnafu {})?;
+    let mut inventory_obj = inv::load(&config.storage_options).map_err(Error::from)?;
     inventory_obj.set_class_mappings(config.class_mappings);
     inventory_obj.set_class_mappings_match_path(config.class_mappings_match_path);
     inventory_obj.set_merge_config(merge_config);
@@ -46,7 +46,7 @@ pub(crate) fn inventory_main(config: Options) -> Result<(), Error> {
         ignore_failed_node,
         ignore_failed_render,
     )
-    .context(InventoryLoadSnafu {})?;
+    .map_err(Error::from)?;
     if sorted {
         output.sort_keys();
     }
@@ -64,7 +64,7 @@ pub(crate) fn inventory_main(config: Options) -> Result<(), Error> {
 pub(crate) fn nodeinfo_main(config: Options, node_name: &str) -> Result<(), Error> {
     tracing::debug!("starting nodeinfo for {node_name}");
     let merge_config = config.build_merge_config();
-    let mut inventory_obj = inv::load(&config.storage_options).context(InventorySnafu {})?;
+    let mut inventory_obj = inv::load(&config.storage_options).map_err(Error::from)?;
     inventory_obj.set_class_mappings(config.class_mappings);
     inventory_obj.set_class_mappings_match_path(config.class_mappings_match_path);
     inventory_obj.set_merge_config(merge_config);

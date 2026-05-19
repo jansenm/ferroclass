@@ -24,14 +24,15 @@ This project is licensed under the **Mozilla Public License 2.0 (MPL-2.0)**.
 
 ## Documentation Structure
 
-| File              | Audience      | Content                                           |
-|-------------------|---------------|---------------------------------------------------|
-| `README.md`       | Users         | Concepts, rules, configuration, compatibility     |
-| `docs/process.md` | Users         | Detailed processing pipeline (deep-dive)          |
-| `CHANGELOG.md`    | Users         | Release history                                   |
-| `CONTRIBUTING.md` | Contributors  | Build, test, licensing, release process           |
-| `docs/todo.md`      | Users          | Planned features and roadmap                        |
-| `AGENTS.md`       | AI/Developers | Architecture rules, code style, development guide, agent workflow |
+| File                 | Audience      | Content                                           |
+|----------------------|---------------|---------------------------------------------------|
+| `README.md`          | Users         | Concepts, rules, configuration, compatibility     |
+| `docs/process.md`    | Users         | Detailed processing pipeline (deep-dive)          |
+| `docs/conventions.md`| Developers    | Error handling, snafu patterns, development rules |
+| `CHANGELOG.md`       | Users         | Release history                                   |
+| `CONTRIBUTING.md`    | Contributors  | Build, test, licensing, release process           |
+| `docs/todo.md`       | Users         | Planned features and roadmap                      |
+| `AGENTS.md`          | AI/Developers | Architecture rules, code style, development guide, agent workflow |
 
 ## Agent Workflow
 
@@ -173,6 +174,8 @@ cargo test test_default_options
 - **Pattern**: `#[derive(Debug, Snafu)]` for error enums
 - **Context**: Use `.context()` method to add context to errors
 - **Visibility**: Use `#[snafu(visibility(pub(in super::module)))]` for module-level visibility
+- **Full conventions**: See [docs/conventions.md](docs/conventions.md) for funnel principle,
+  display rules, source chain discipline, pass-through elimination, and transparent variants
 
 ### Import Organization
 

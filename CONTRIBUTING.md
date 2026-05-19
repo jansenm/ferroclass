@@ -62,6 +62,9 @@ make check-manpages        # Verify man pages are up to date
 See [AGENTS.md](AGENTS.md) for architecture rules, code style guidelines,
 error handling patterns, and module organization.
 
+See [docs/conventions.md](docs/conventions.md) for error handling design rules,
+snafu patterns, the funnel principle, and development conventions.
+
 ## Licensing
 
 This project is licensed under the [Mozilla Public License 2.0](LICENSES/MPL-2.0.txt).
