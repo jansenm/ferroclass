@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 Name:           ferroclass
-Version:        0.10.0
+Version:        0.10.1
 Release:        1%{?dist}
 Summary:        Hierarchical inventory management tool (reclass compatible)
 
@@ -113,6 +113,10 @@ install -m 0644 man/ferroclass-salt.1 %{buildroot}%{_mandir}/man1/ferroclass-sal
 %{_mandir}/man1/ferroclass-salt.1*
 
 %changelog
+* Tue May 19 2026 Michael Jansen <mike@michael-jansen.biz> - 0.10.1-1
+- Improve error messages by eliminating pass-through error layers
+- Add docs/conventions.md documenting error handling patterns
+
 * Mon May 18 2026 Michael Jansen <mike@michael-jansen.biz> - 0.10.0-1
 - Rename binaries to ferroclass/ferroclass-ansible/ferroclass-salt
 - Rename RPM sub-packages to ferroclass-ansible and ferroclass-salt

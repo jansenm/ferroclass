@@ -1,4 +1,10 @@
 -------------------------------------------------------------------
+Tue May 19 2026 Michael Jansen <mike@michael-jansen.biz> - 0.10.1-1
+
+- Improve error messages by eliminating pass-through error layers
+- Add docs/conventions.md documenting error handling patterns
+
+-------------------------------------------------------------------
 Mon May 18 2026 Michael Jansen <mike@michael-jansen.biz> - 0.10.0-1
 
 - Rename binaries to ferroclass/ferroclass-ansible/ferroclass-salt

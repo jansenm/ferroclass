@@ -1,6 +1,6 @@
 [package]
 name = "ferroclass"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2024"
 license = "MPL-2.0"
 description = "Hierarchical inventory management tool (reclass compatible)"
@@ -35,7 +35,7 @@ insta = { version = "1.42", features = ["yaml"] }
 manpages = ["clap_mangen"]
 
 [dependencies.clap_mangen]
-version = "0.2"
+version = "0.2.33"
 optional = true
 
 [[bin]]

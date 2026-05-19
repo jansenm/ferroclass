@@ -139,7 +139,7 @@ bump-version: bump-version-start bump-version-do bump-version-end
 bump-version-do:
 	@test -n "$(VERSION_NEW)" || (echo "Usage: make bump-version VERSION_NEW=x.y.z" && exit 1)
 	sed -i 's/^Version:.*/Version:        $(VERSION_NEW)/' packaging/rpm/ferroclass.spec
-	sed -i 's/^version = ".*"/version = "$(VERSION_NEW)"/' Cargo.toml
+	perl -i -pe 'BEGIN { $$n=0; } $$n++ < 1 && s/^version = ".*"/version = "$(VERSION_NEW)"/g' Cargo.toml
 	@echo "Version bumped to $(VERSION_NEW). Update CHANGELOG.md before releasing."
 
 ## release            » full release: verify, build, package, tag, and publish
