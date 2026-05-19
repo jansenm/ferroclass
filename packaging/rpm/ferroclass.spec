@@ -6,7 +6,9 @@ Version:        0.10.1
 Release:        1%{?dist}
 Summary:        Hierarchical inventory management tool (reclass compatible)
 
-License:        MPL-2.0
+# Ferroclass is MPL-2.0. Vendored dependencies have their own licenses;
+# see cargo-vendor.txt for the full breakdown.
+License:        MPL-2.0 AND Apache-2.0 AND BSD-3-Clause AND MIT
 URL:            https://github.com/jansenm/ferroclass
 Source0:        %{name}-%{version}.tar.gz
 Source1:        %{name}-%{version}-vendor.tar.gz
@@ -28,6 +30,7 @@ BuildRequires:  cargo-packaging
 BuildRequires:  cargo
 %else
 # RHEL, Rocky Linux, AlmaLinux, Fedora
+BuildRequires:  cargo-rpm-macros
 BuildRequires:  rust-packaging
 BuildRequires:  cargo
 %endif
@@ -75,12 +78,24 @@ installed independently — the main ferroclass package is not required.
 
 %prep
 %autosetup -p1 -a1
+%if 0%{?suse_version}
+# SUSE: cargo-packaging sets up vendored sources via .cargo/config.toml
+%else
+# RHEL/Fedora: cargo-rpm-macros needs explicit vendor prep
+%cargo_prep -v vendor
+%endif
 
 %build
 %if 0%{?cargo_build:1}
 %cargo_build
 %else
 cargo build --release --frozen %{?_smp_mflags}
+%endif
+
+# Generate vendored dependency manifest for license compliance.
+# Fedora guidelines require cargo-vendor.txt as %license.
+%if 0%{?cargo_vendor_manifest:1}
+%cargo_vendor_manifest
 %endif
 
 %check
@@ -102,6 +117,9 @@ install -m 0644 man/ferroclass-salt.1 %{buildroot}%{_mandir}/man1/ferroclass-sal
 
 %files
 %license LICENSES/MPL-2.0.txt
+%if 0%{?cargo_vendor_manifest:1}
+%license cargo-vendor.txt
+%endif
 %doc README.md
 %{_bindir}/ferroclass
 %{_mandir}/man1/ferroclass.1*
