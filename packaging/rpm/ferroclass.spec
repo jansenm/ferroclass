@@ -14,16 +14,10 @@ Source0:        %{name}-%{version}.tar.gz
 Source1:        %{name}-%{version}-vendor.tar.gz
 
 # Ferroclass requires Rust edition 2024 (Rust >= 1.85.0).
-# On SUSE, cargo-packaging provides %rust_tier1_arches (x86_64 aarch64).
-# On RHEL/Fedora, rust-packaging provides %rust_arches.
-# Fallback for builds without either macro installed.
-%if 0%{?rust_tier1_arches:1}
-ExclusiveArch:  %{rust_tier1_arches}
-%elif 0%{?rust_arches:1}
-ExclusiveArch:  %{rust_arches}
-%else
-ExclusiveArch:  x86_64 aarch64
-%endif
+# Only x86_64 is enabled for now. aarch64 builds fail on snapshot
+# tests due to HashMap iteration order differences (peers map ordering).
+# Enable aarch64 only after sorting snapshot tests with sorted=true.
+ExclusiveArch:  x86_64
 
 %if 0%{?suse_version}
 BuildRequires:  cargo-packaging
