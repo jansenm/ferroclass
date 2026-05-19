@@ -10,18 +10,18 @@ use snafu::prelude::*;
 
 #[derive(Debug, Snafu)]
 pub(crate) enum Error {
-    #[snafu(display("Error while loading the inventory"))]
+    #[snafu(display("error loading inventory"))]
     Inventory { source: inv::Error },
-    #[snafu(display("Error while loading the inventory"))]
+    #[snafu(display("error building inventory output"))]
     InventoryLoad { source: InventoryError },
-    #[snafu(display("Node not found: {node_name}"))]
+    #[snafu(display("node '{node_name}' not found"))]
     NodeNotFound { node_name: String },
-    #[snafu(display("Error while merging node {node_name}"))]
+    #[snafu(display("error merging node '{node_name}'"))]
     Merge {
         source: inv::Error,
         node_name: String,
     },
-    #[snafu(display("Error serializing output: {message}"))]
+    #[snafu(display("error serializing output: {message}"))]
     Output { message: String },
 }
 

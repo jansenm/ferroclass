@@ -13,7 +13,7 @@ use super::{ReclassMap, YamlOutput};
 
 #[derive(Debug, Snafu)]
 pub enum InventoryError {
-    #[snafu(display("Error while loading the inventory"))]
+    #[snafu(display("error loading inventory"))]
     InventoryLoad { source: inv::Error },
 }
 

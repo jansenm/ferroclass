@@ -10,18 +10,18 @@ use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Failed to parse the classes definition"))]
+    #[snafu(display("invalid classes list, expected a sequence"))]
     InvalidClassesDefinition,
-    #[snafu(display("Failed to parse the parameter definition"))]
+    #[snafu(display("invalid parameters mapping, expected a mapping"))]
     InvalidParameterDefinition,
-    #[snafu(display("Failed to parse the environment"))]
+    #[snafu(display("invalid environment value"))]
     InvalidEnvironment { source: value::Error },
-    #[snafu(display("Unexpected key found {key}"))]
+    #[snafu(display("top level key '{key}' is not supported"))]
     UnexpectedKey { key: String },
-    #[snafu(display("Expected a hash"))]
+    #[snafu(display("expected a mapping at the top level"))]
     HashExpected,
     #[snafu(display(
-        "Invalid parameter key '{key}' found. Key must match ansible variable name rules (letters, numbers, underscores only)"
+        "parameter key '{key}' is not valid for ansible variable names (letters, numbers and underscores only)"
     ))]
     InvalidParameterKey { key: String },
 }

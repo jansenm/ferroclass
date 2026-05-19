@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::configuration_file;
+use crate::inventory::class_mapping;
 use crate::inventory::class_mapping::ClassMapping;
 use crate::inventory::options::{Options, OutputOptions, StorageOptions};
 use crate::inventory::types::Environment;
@@ -16,26 +17,26 @@ pub const CONFIG_FILE_NAME: &str = "reclass-config.yml";
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("invalid file {path}"))]
+    #[snafu(display("cannot read configuration from '{path}'"))]
     File {
         path: String,
         source: std::io::Error,
     },
-    #[snafu(display("invalid configuration file {path}"))]
+    #[snafu(display("invalid configuration in '{path}'"))]
     ConfigurationFile {
         source: configuration_file::Error,
         path: String,
     },
     #[cfg(not(test))]
-    #[snafu(display("todo"))]
+    #[snafu(display("error looking for configuration directory"))]
     Io { source: std::io::Error },
-    #[snafu(display("invalid configuration encountered: {message}"))]
+    #[snafu(display("invalid configuration: {message}"))]
     Configuration {
         message: String,
         source: LookupError<env::VarError>,
     },
-    #[snafu(display("invalid class mapping: {detail}"))]
-    ClassMapping { detail: String },
+    #[snafu(display("invalid class mapping"))]
+    ClassMapping { source: class_mapping::Error },
 }
 
 #[cfg(test)]
@@ -193,11 +194,7 @@ fn parse_class_mappings(raw: Option<Vec<String>>) -> Result<Vec<ClassMapping>, E
     };
     strings
         .into_iter()
-        .map(|s| {
-            ClassMapping::parse(&s).map_err(|e| Error::ClassMapping {
-                detail: e.to_string(),
-            })
-        })
+        .map(|s| ClassMapping::parse(&s).context(ClassMappingSnafu {}))
         .collect()
 }
 

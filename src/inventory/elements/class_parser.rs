@@ -9,12 +9,13 @@ use snafu::prelude::*;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Expected a hash"))]
+    #[snafu(display("expected a mapping at the top level"))]
     HashExpected,
-    #[snafu(display("Failed to parse the class"))]
-    InvalidDefinition { source: parser::Error },
-    #[snafu(display("Unexpected key found {key}"))]
-    UnexpectedKey { key: String },
+    #[snafu(display("class '{class_name}'"))]
+    InvalidDefinition {
+        source: parser::Error,
+        class_name: String,
+    },
 }
 
 pub(crate) fn parse_class(
@@ -23,8 +24,11 @@ pub(crate) fn parse_class(
     parameter_key_style: &ParameterKeyStyle,
     default_environment: &Environment,
 ) -> Result<Class, Error> {
-    let data = parser::parse_definition(definition, parameter_key_style)
-        .context(InvalidDefinitionSnafu {})?;
+    let data = parser::parse_definition(definition, parameter_key_style).context(
+        InvalidDefinitionSnafu {
+            class_name: class_name.clone(),
+        },
+    )?;
 
     let environment = data
         .environment

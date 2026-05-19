@@ -7,7 +7,7 @@ use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Invalid YAML encountered"))]
+    #[snafu(display("invalid YAML in configuration"))]
     InvalidYamlError { source: serde_yml::Error },
 }
 

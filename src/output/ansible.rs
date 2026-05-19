@@ -14,7 +14,7 @@ use super::{ReclassMap, YamlOutput};
 
 #[derive(Debug, Snafu)]
 pub enum AnsibleInventoryError {
-    #[snafu(display("Error while loading the inventory"))]
+    #[snafu(display("error loading ansible inventory"))]
     InventoryLoad { source: inv::Error },
 }
 
@@ -245,11 +245,11 @@ impl YamlOutput for AnsibleNodeInfo {
 
 #[derive(Debug, Snafu)]
 pub enum HostVarsError {
-    #[snafu(display("Error while loading the inventory"))]
+    #[snafu(display("error loading ansible inventory"))]
     HostVarsInventoryLoad { source: inv::Error },
-    #[snafu(display("Node not found: {node_name}"))]
+    #[snafu(display("node '{node_name}' not found"))]
     NodeNotFound { node_name: String },
-    #[snafu(display("Error while merging node {node_name}"))]
+    #[snafu(display("error merging node '{node_name}'"))]
     Merge {
         source: inv::Error,
         node_name: String,

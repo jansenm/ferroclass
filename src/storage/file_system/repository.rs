@@ -71,7 +71,9 @@ impl YamlFsRepository {
         let content = fs::read(path).context(super::IoSnafu {
             path: path.to_string_lossy().to_string(),
         })?;
-        String::from_utf8(content).context(super::EncodingSnafu)
+        String::from_utf8(content).context(super::EncodingSnafu {
+            path: path.to_string_lossy().to_string(),
+        })
     }
 
     pub(crate) fn load_class(&self, path: &Path, format: FileFormat) -> Result<Class, Error> {
@@ -82,10 +84,13 @@ impl YamlFsRepository {
 
         let parser = YamlParser {};
         let content = self.load(path)?;
+        let path_str = path.to_string_lossy().to_string();
         let mut content_parsed: Value = match format {
             FileFormat::Yaml => parser.parse(&content),
         }
-        .context(YamlSnafu {})?;
+        .context(YamlSnafu {
+            path: path_str.clone(),
+        })?;
         content_parsed.detect_references();
 
         let mut class = class_parser::parse_class(
@@ -94,7 +99,7 @@ impl YamlFsRepository {
             &self.parameter_key_style,
             &self.default_environment,
         )
-        .context(InvalidClassDefinitionSnafu {})?;
+        .context(InvalidClassDefinitionSnafu { path: path_str })?;
 
         let uri = format!("yaml_fs://{}", path.to_string_lossy());
         class.set_uri(uri);
@@ -114,10 +119,13 @@ impl YamlFsRepository {
 
         let parser = YamlParser {};
         let content = self.load(path)?;
+        let path_str = path.to_string_lossy().to_string();
         let mut content_parsed: Value = match format {
             FileFormat::Yaml => parser.parse(&content),
         }
-        .context(YamlSnafu {})?;
+        .context(YamlSnafu {
+            path: path_str.clone(),
+        })?;
         content_parsed.detect_references();
 
         let mut node = node_parser::parse_node(
@@ -126,7 +134,7 @@ impl YamlFsRepository {
             &self.parameter_key_style,
             &self.default_environment,
         )
-        .context(InvalidNodeDefinitionSnafu {})?;
+        .context(InvalidNodeDefinitionSnafu { path: path_str })?;
         node.set_short_name(short_name);
         if let Ok(pathname) = self.node_pathname(path) {
             node.set_pathname(pathname);

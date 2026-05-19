@@ -272,19 +272,18 @@ impl Inventory {
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Error while loading the inventory"))]
-    Error {},
-    #[snafu(display("Error while loading the repository"))]
-    Repository { source: file_system::Error },
-    #[snafu(display("Class not found: {class_name}"))]
+    #[snafu(display("error loading repository at '{base_uri}'"))]
+    Repository {
+        source: file_system::Error,
+        base_uri: String,
+    },
+    #[snafu(display("class '{class_name}' not found"))]
     ClassNotFound { class_name: String },
-    #[snafu(display("Node not found: {node_name}"))]
+    #[snafu(display("node '{node_name}' not found"))]
     NodeNotFound { node_name: String },
-    #[snafu(display("Interpolation error"))]
+    #[snafu(display("interpolation error"))]
     InterpolationError { source: interpolation::Error },
-    #[snafu(display(
-        "Definition of node '{name}' in '{new_uri}' collides with definition in '{existing_uri}'"
-    ))]
+    #[snafu(display("node '{name}' defined in both '{existing_uri}' and '{new_uri}'"))]
     DuplicateNodeName {
         name: String,
         existing_uri: String,
@@ -296,9 +295,10 @@ impl From<merge::Error> for Error {
     fn from(e: merge::Error) -> Self {
         match e {
             merge::Error::ClassNotFound { class_name } => Error::ClassNotFound { class_name },
-            merge::Error::ClassNameResolveError { class_name } => {
-                Error::ClassNotFound { class_name }
-            }
+            merge::Error::ClassNameResolveError {
+                class_name,
+                source: _,
+            } => Error::ClassNotFound { class_name },
             merge::Error::InterpolationError { source } => Error::InterpolationError { source },
             merge::Error::MergeError { source } => Error::InterpolationError {
                 source: interpolation::Error::TypeMerge { source },
@@ -333,7 +333,9 @@ pub fn load_from_yaml_string_with_uri(
         base_uri,
         &default_environment,
     )
-    .context(RepositorySnafu {})?;
+    .context(RepositorySnafu {
+        base_uri: base_uri.unwrap_or("<memory>").to_string(),
+    })?;
     let mut inventory = Inventory::new();
     for class in classes {
         inventory.add_class(class);
@@ -345,12 +347,15 @@ pub fn load_from_yaml_string_with_uri(
 }
 
 fn load_yaml_fs(storage_options: &YamlFsStorageOptions) -> Result<Inventory, Error> {
+    let base_uri = storage_options.inventory_base_uri.clone();
     let mut inventory = Inventory::new();
     let repo = file_system::YamlFsRepository::new(
         storage_options,
         storage_options.parameter_key_style.clone(),
     )
-    .context(RepositorySnafu {})?;
+    .context(RepositorySnafu {
+        base_uri: base_uri.clone(),
+    })?;
     tracing::debug!(
         path = storage_options.classes_path().to_string_lossy().as_ref(),
         "loading classes"
@@ -358,7 +363,12 @@ fn load_yaml_fs(storage_options: &YamlFsStorageOptions) -> Result<Inventory, Err
     for class in repo.classes_iter() {
         match class {
             Ok(class) => inventory.add_class(class),
-            Err(e) => return Err(Error::Repository { source: e }),
+            Err(e) => {
+                return Err(Error::Repository {
+                    source: e,
+                    base_uri: base_uri.clone(),
+                });
+            }
         }
     }
 
@@ -370,25 +380,33 @@ fn load_yaml_fs(storage_options: &YamlFsStorageOptions) -> Result<Inventory, Err
     for node in repo.nodes_iter() {
         match node {
             Ok(node) => inventory.add_node(node)?,
-            Err(e) => return Err(Error::Repository { source: e }),
+            Err(e) => {
+                return Err(Error::Repository {
+                    source: e,
+                    base_uri: base_uri.clone(),
+                });
+            }
         }
     }
     Ok(inventory)
 }
 
 fn load_yaml_file(storage_options: &YamlFileStorageOptions) -> Result<Inventory, Error> {
+    let base_uri = storage_options.inventory_file.clone();
     let mut inventory = Inventory::new();
     let repo = file_system::YamlFileRepository::new(
         storage_options,
         storage_options.parameter_key_style.clone(),
     )
-    .context(RepositorySnafu {})?;
+    .context(RepositorySnafu {
+        base_uri: base_uri.clone(),
+    })?;
     tracing::debug!(
         path = repo.file_path().to_string_lossy().as_ref(),
         "loading from YAML file"
     );
 
-    let (_metadata, classes, nodes) = repo.load().context(RepositorySnafu {})?;
+    let (_metadata, classes, nodes) = repo.load().context(RepositorySnafu { base_uri })?;
 
     for class in classes {
         inventory.add_class(class);

@@ -9,7 +9,7 @@ use yaml_rust2::{ScanError, YamlLoader};
 pub enum Error {
     #[snafu(display("[{}:{}] {}", source.marker().line(), source.marker().col(), source.info()))]
     InvalidYamlError { source: ScanError },
-    #[snafu(display("Multiple document yaml is not supported"))]
+    #[snafu(display("multi-document YAML is not supported"))]
     MultiDocumentError {},
 }
 

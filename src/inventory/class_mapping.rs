@@ -7,14 +7,14 @@ use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Invalid mapping format: {message}"))]
+    #[snafu(display("invalid mapping format: {message}"))]
     InvalidFormat { message: String },
-    #[snafu(display("Invalid glob pattern '{pattern}'"))]
+    #[snafu(display("invalid glob pattern '{pattern}'"))]
     InvalidGlob {
         pattern: String,
         source: globset::Error,
     },
-    #[snafu(display("Invalid regex pattern '{pattern}'"))]
+    #[snafu(display("invalid regex pattern '{pattern}'"))]
     InvalidRegex {
         pattern: String,
         source: regex::Error,

@@ -12,17 +12,17 @@ use std::rc::Rc;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Circular reference detected: {path}"))]
+    #[snafu(display("circular reference: {path}"))]
     CircularReference { path: String },
-    #[snafu(display("Reference not found: {path}"))]
+    #[snafu(display("reference not found: {path}"))]
     ReferenceNotFound { path: String },
-    #[snafu(display("Attempt to change constant parameter at {path}"))]
+    #[snafu(display("constant parameter was modified at {path}"))]
     ChangedConstantParameter { path: String },
-    #[snafu(display("Type merge error"))]
+    #[snafu(display("type conflict while resolving references"))]
     TypeMerge {
         source: crate::inventory::value_merge::Error,
     },
-    #[snafu(display("Multiple resolve errors:\n{errors}"))]
+    #[snafu(display("multiple resolve errors:\n{errors}"))]
     ResolveErrorList { errors: ResolveErrorList },
 }
 

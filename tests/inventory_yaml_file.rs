@@ -26,7 +26,7 @@ fn test_invalid_parameter_key_ansible_style() {
     assert!(
         Report::from_error(error)
             .to_string()
-            .contains("Invalid parameter key")
+            .contains("parameter key")
     );
 }
 

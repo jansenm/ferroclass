@@ -10,7 +10,7 @@ use snafu::prelude::*;
 
 #[derive(Debug, Snafu)]
 pub enum ApplyError {
-    #[snafu(display("invalid configuration encountered: {message}"))]
+    #[snafu(display("invalid configuration: {message}"))]
     Configuration {
         message: String,
         source: LookupError<std::env::VarError>,

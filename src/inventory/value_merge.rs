@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Cannot merge {new_type} over {existing_type}{context}"))]
+    #[snafu(display("cannot merge {new_type} into {existing_type}{context}"))]
     TypeMerge {
         new_type: &'static str,
         existing_type: &'static str,
@@ -21,25 +21,6 @@ fn format_path(path: &[String]) -> String {
         String::new()
     } else {
         format!(", at {}", path.join(":"))
-    }
-}
-
-fn value_type_name(value: &Value) -> &'static str {
-    match value {
-        Value::Hash(_) => "dictionary",
-        Value::Array(_) => "list",
-        Value::String(_)
-        | Value::Integer(_)
-        | Value::Boolean(_)
-        | Value::Real(_)
-        | Value::Null
-        | Value::Reference(_)
-        | Value::StringWithReference(_)
-        | Value::InvQuery(_)
-        | Value::StringWithInvQuery(_) => "scalar",
-        Value::DeferredMerge(_) => "deferred_merge",
-        Value::OverrideMarker(_) => "override",
-        Value::ConstantMarker(_) => "constant",
     }
 }
 
@@ -134,7 +115,7 @@ pub fn merge(
                 return Ok(new.clone());
             }
             Err(Error::TypeMerge {
-                new_type: value_type_name(new),
+                new_type: new.type_name(),
                 existing_type: "dictionary",
                 context: format_path(path),
             })
@@ -144,7 +125,7 @@ pub fn merge(
                 return Ok(new.clone());
             }
             Err(Error::TypeMerge {
-                new_type: value_type_name(new),
+                new_type: new.type_name(),
                 existing_type: "list",
                 context: format_path(path),
             })

@@ -16,13 +16,16 @@ use std::rc::Rc;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Class not found: {class_name}"))]
+    #[snafu(display("class '{class_name}' not found"))]
     ClassNotFound { class_name: String },
-    #[snafu(display("Class name '{class_name}' not resolvable"))]
-    ClassNameResolveError { class_name: String },
-    #[snafu(display("Interpolation error"))]
+    #[snafu(display("class name '{class_name}' could not be resolved"))]
+    ClassNameResolveError {
+        class_name: String,
+        source: interpolation::Error,
+    },
+    #[snafu(display("interpolation error"))]
     InterpolationError { source: interpolation::Error },
-    #[snafu(display("Merge error"))]
+    #[snafu(display("merge error"))]
     MergeError {
         source: crate::inventory::value_merge::Error,
     },
@@ -117,9 +120,10 @@ fn interpolate_class_name(
 ) -> Result<String, Error> {
     let mut value = Value::String(class_name.to_string());
     value.detect_references();
-    interpolation::interpolate(&mut value, parameters, config).map_err(|_| {
+    interpolation::interpolate(&mut value, parameters, config).map_err(|source| {
         Error::ClassNameResolveError {
             class_name: class_name.to_string(),
+            source,
         }
     })?;
     Ok(value.value_to_string())

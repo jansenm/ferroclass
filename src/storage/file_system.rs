@@ -23,26 +23,20 @@ pub enum Error {
         source: std::io::Error,
         path: String,
     },
-    #[snafu(display("file error: {path}"))]
-    File {
-        source: std::io::Error,
-        path: String,
-    },
-    #[snafu(display("invalid file: {path}"))]
-    InvalidFile {
-        source: std::io::Error,
-        path: String,
-    },
-    #[snafu(display("invalid yaml encountered"))]
-    Yaml { source: yaml::Error },
-    #[snafu(display("problematic encoding encountered"))]
-    Encoding { source: FromUtf8Error },
+    #[snafu(display("invalid yaml in {path}"))]
+    Yaml { source: yaml::Error, path: String },
+    #[snafu(display("invalid UTF-8 encoding in {path}"))]
+    Encoding { source: FromUtf8Error, path: String },
     #[snafu(display("{message}: {path}"))]
     InvalidPath { message: String, path: String },
-    #[snafu(display("recursive path detected {message}"))]
-    RecursivePath { message: String },
-    #[snafu(display("Failed to load the class"))]
-    InvalidClassDefinition { source: class_parser::Error },
-    #[snafu(display("Failed to load the node"))]
-    InvalidNodeDefinition { source: node_parser::Error },
+    #[snafu(display("file {path}"))]
+    InvalidClassDefinition {
+        source: class_parser::Error,
+        path: String,
+    },
+    #[snafu(display("file {path}"))]
+    InvalidNodeDefinition {
+        source: node_parser::Error,
+        path: String,
+    },
 }

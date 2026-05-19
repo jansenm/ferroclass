@@ -19,8 +19,8 @@ pub type ParametersType = Hash;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("environment has to be a string, got {:?}", environment))]
-    InvalidEnvironment { environment: String },
+    #[snafu(display("environment must be a string, got {value_type}"))]
+    InvalidEnvironment { value_type: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -167,6 +167,25 @@ impl From<&Value> for YamlValue {
 }
 
 impl Value {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::Hash(_) => "dictionary",
+            Value::Array(_) => "list",
+            Value::String(_)
+            | Value::Integer(_)
+            | Value::Boolean(_)
+            | Value::Real(_)
+            | Value::Null
+            | Value::Reference(_)
+            | Value::StringWithReference(_)
+            | Value::InvQuery(_)
+            | Value::StringWithInvQuery(_) => "scalar",
+            Value::DeferredMerge(_) => "deferred_merge",
+            Value::OverrideMarker(_) => "override",
+            Value::ConstantMarker(_) => "constant",
+        }
+    }
+
     pub fn to_yaml_value(&self) -> YamlValue {
         self.to_yaml_value_sorted(false)
     }
@@ -893,7 +912,7 @@ impl TryInto<Environment> for Value {
             Value::String(value) => Ok(Environment::from(value)),
             Value::Null => Ok(Environment::default()),
             _ => Err(Error::InvalidEnvironment {
-                environment: format!("{:?}", self),
+                value_type: self.type_name().to_string(),
             }),
         }
     }

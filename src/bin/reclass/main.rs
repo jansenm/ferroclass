@@ -26,13 +26,13 @@ fn format_error_chain(err: &dyn std::error::Error) -> String {
 #[cfg(not(tarpaulin_include))]
 #[derive(Debug, Snafu)]
 enum Error {
-    #[snafu(display("Error while trying to figure out the configuration"))]
+    #[snafu(display("error getting working directory"))]
     Io { source: std::io::Error },
-    #[snafu(display("Error while trying to figure out the configuration"))]
+    #[snafu(display("error loading configuration"))]
     LoadConfig {
         source: ::ferroclass::configuration::Error,
     },
-    #[snafu(display("Error while applying configuration"))]
+    #[snafu(display("error applying configuration options"))]
     ApplyConfig { source: configuration::ApplyError },
 }
 

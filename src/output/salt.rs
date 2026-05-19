@@ -15,7 +15,7 @@ use super::ansible::{self, HostVars};
 
 #[derive(Debug, Snafu)]
 pub enum TopError {
-    #[snafu(display("Error while loading the inventory"))]
+    #[snafu(display("error loading inventory"))]
     TopInventoryLoad { source: inv::Error },
 }
 
@@ -93,11 +93,11 @@ impl YamlOutput for TopData {
 
 #[derive(Debug, Snafu)]
 pub enum PillarError {
-    #[snafu(display("Error while loading the inventory"))]
+    #[snafu(display("error loading inventory"))]
     PillarInventoryLoad { source: inv::Error },
-    #[snafu(display("Node not found: {node_name}"))]
+    #[snafu(display("node '{node_name}' not found"))]
     NodeNotFound { node_name: String },
-    #[snafu(display("Error while merging node {node_name}"))]
+    #[snafu(display("error merging node '{node_name}'"))]
     Merge {
         source: inv::Error,
         node_name: String,

@@ -48,7 +48,9 @@ impl YamlFileRepository {
         let content = fs::read(&self.file_path).context(super::IoSnafu {
             path: self.file_path.to_string_lossy().to_string(),
         })?;
-        let content_str = String::from_utf8(content).context(super::EncodingSnafu {})?;
+        let content_str = String::from_utf8(content).context(super::EncodingSnafu {
+            path: self.file_path.to_string_lossy().to_string(),
+        })?;
         let (metadata, mut classes, mut nodes) = Self::parse_content(
             &content_str,
             &self.parameter_key_style,
@@ -105,7 +107,9 @@ impl YamlFileRepository {
                 }
             })
             .collect::<Result<Vec<Value>, _>>()
-            .context(super::YamlSnafu {})?;
+            .context(super::YamlSnafu {
+                path: "<memory>".to_string(),
+            })?;
 
         for doc in &mut documents {
             doc.detect_references();
@@ -149,7 +153,11 @@ impl YamlFileRepository {
                                 parameter_key_style,
                                 default_environment,
                             )
-                            .context(super::InvalidNodeDefinitionSnafu {})?;
+                            .context(
+                                super::InvalidNodeDefinitionSnafu {
+                                    path: "<memory>".to_string(),
+                                },
+                            )?;
                             nodes.push(node);
                         }
                         _ => {
@@ -164,7 +172,11 @@ impl YamlFileRepository {
                                 parameter_key_style,
                                 default_environment,
                             )
-                            .context(super::InvalidClassDefinitionSnafu {})?;
+                            .context(
+                                super::InvalidClassDefinitionSnafu {
+                                    path: "<memory>".to_string(),
+                                },
+                            )?;
                             classes.push(class);
                         }
                     }
