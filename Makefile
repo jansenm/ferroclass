@@ -143,7 +143,7 @@ bump-version-do:
 	@echo "Version bumped to $(VERSION_NEW). Update CHANGELOG.md before releasing."
 
 ## release            » full release: verify, build, package, tag, and publish
-release: release-start commit dist checksums tag release-gh osc-sync release-end
+release: release-start commit dist checksums tag release-gh osc-sync osc-add osc-commit release-end
 release-do:
 
 ##
