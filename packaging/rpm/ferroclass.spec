@@ -12,12 +12,16 @@ Source0:        %{name}-%{version}.tar.gz
 Source1:        %{name}-%{version}-vendor.tar.gz
 
 # Ferroclass requires Rust edition 2024 (Rust >= 1.85.0).
-# Fallback if %rust_arches is not defined (e.g. cargo-packaging not installed).
-%if !0%{?rust_arches:1}
-%define rust_arches x86_64 i586 i686 armv6hl armv7hl aarch64 ppc64 powerpc64 ppc64le powerpc64le riscv64 s390x
-%endif
-
+# On SUSE, cargo-packaging provides %rust_tier1_arches (x86_64 aarch64).
+# On RHEL/Fedora, rust-packaging provides %rust_arches.
+# Fallback for builds without either macro installed.
+%if 0%{?rust_tier1_arches:1}
+ExclusiveArch:  %{rust_tier1_arches}
+%elif 0%{?rust_arches:1}
 ExclusiveArch:  %{rust_arches}
+%else
+ExclusiveArch:  x86_64 aarch64
+%endif
 
 %if 0%{?suse_version}
 BuildRequires:  cargo-packaging
@@ -70,7 +74,7 @@ This package contains only the ferroclass-salt binary. It can be
 installed independently — the main ferroclass package is not required.
 
 %prep
-%autosetup -a1
+%autosetup -p1 -a1
 
 %build
 %if 0%{?cargo_build:1}
