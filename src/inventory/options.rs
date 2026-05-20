@@ -6,13 +6,13 @@
 //! This module provides types for configuring storage, output formatting,
 //! and general application options.
 //!
-//! # Modules
+//! # Re-exported types
 //!
-//! - [`storage_type`] - Defines the type of storage backend
-//! - [`storage_options`] - Configuration for storage backend
-//! - [`output_format`] - Supported output formats (YAML, JSON)
-//! - [`output_options`] - Configuration for output formatting
-//! - [`merge_options`] - Configuration for merge behavior
+//! - [`StorageType`] - Defines the type of storage backend
+//! - [`StorageOptions`] - Configuration for storage backend
+//! - [`OutputFormat`] - Supported output formats (YAML, JSON)
+//! - [`OutputOptions`] - Configuration for output formatting
+//! - [`MergeConfig`] - Configuration for merge behavior
 
 mod merge_options;
 mod output_format;

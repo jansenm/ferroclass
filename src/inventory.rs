@@ -11,18 +11,21 @@ use hashlink::LinkedHashMap;
 use snafu::{ResultExt, Snafu};
 use std::rc::Rc;
 
-pub mod applications;
+pub(crate) mod applications;
 pub mod class_mapping;
 pub mod elements;
-pub mod interpolation;
-pub mod inv_query;
-pub mod merge;
+pub(crate) mod interpolation;
+pub(crate) mod inv_query;
+pub(crate) mod merge;
 pub mod options;
 pub mod types;
 pub mod value;
-pub mod value_merge;
+pub(crate) mod value_merge;
 
 pub use elements::{Class, Node};
+pub use merge::Error as MergeError;
+pub use value_merge::Error as ValueMergeError;
+pub use value_merge::merge as merge_values;
 
 pub fn create_automatic_parameters(nodename: &str, environment: &Environment) -> ParametersType {
     let short_name = nodename.split('.').next().unwrap_or(nodename);

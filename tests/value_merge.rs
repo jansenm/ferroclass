@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+use ferroclass::inventory::merge_values;
 use ferroclass::inventory::options::MergeConfig;
 use ferroclass::inventory::value::{Key, Value};
-use ferroclass::inventory::value_merge::merge;
 use hashlink::LinkedHashMap;
 use std::rc::Rc;
 
@@ -48,7 +48,7 @@ fn test_merge_two_empty_lists() {
     let config = default_config();
     let base = array_val(vec![]);
     let other = array_val(vec![]);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, array_val(vec![]));
 }
 
@@ -57,7 +57,7 @@ fn test_merge_list_with_duplicates() {
     let config = default_config();
     let base = array_val(vec![str_val("a"), str_val("b")]);
     let other = array_val(vec![str_val("b"), str_val("c")]);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(
         result,
         array_val(vec![str_val("a"), str_val("b"), str_val("b"), str_val("c")])
@@ -69,7 +69,7 @@ fn test_merge_empty_list_with_list() {
     let config = default_config();
     let base = array_val(vec![]);
     let other = array_val(vec![str_val("a")]);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, array_val(vec![str_val("a")]));
 }
 
@@ -78,7 +78,7 @@ fn test_merge_list_with_empty_list() {
     let config = default_config();
     let base = array_val(vec![str_val("a")]);
     let other = array_val(vec![]);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, array_val(vec![str_val("a")]));
 }
 
@@ -87,7 +87,7 @@ fn test_merge_two_empty_maps() {
     let config = default_config();
     let base = hash_val(vec![]);
     let other = hash_val(vec![]);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, hash_val(vec![]));
 }
 
@@ -96,7 +96,7 @@ fn test_merge_map_with_override_key() {
     let config = default_config();
     let base = hash_val(vec![("key".to_string(), int_val(1))]);
     let other = hash_val(vec![("key".to_string(), int_val(2))]);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     let expected = hash_val(vec![("key".to_string(), int_val(2))]);
     assert_eq!(result, expected);
 }
@@ -112,7 +112,7 @@ fn test_merge_map_nested_override() {
         "config".to_string(),
         hash_val(vec![("timeout".to_string(), int_val(30))]),
     )]);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     match &result {
         Value::Hash(h) => {
             let config_val = h.get(&Key::String("config".to_string()));
@@ -127,7 +127,7 @@ fn test_merge_empty_map_with_map() {
     let config = default_config();
     let base = hash_val(vec![]);
     let other = hash_val(vec![("key".to_string(), str_val("value"))]);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, other);
 }
 
@@ -136,7 +136,7 @@ fn test_merge_map_with_empty_map() {
     let config = default_config();
     let base = hash_val(vec![("key".to_string(), str_val("value"))]);
     let other = hash_val(vec![]);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, base);
 }
 
@@ -145,7 +145,7 @@ fn test_merge_integer_to_integer() {
     let config = default_config();
     let base = int_val(1);
     let other = int_val(2);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, int_val(2));
 }
 
@@ -154,7 +154,7 @@ fn test_merge_string_to_string() {
     let config = default_config();
     let base = str_val("base");
     let other = str_val("other");
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, str_val("other"));
 }
 
@@ -163,7 +163,7 @@ fn test_merge_boolean_to_boolean() {
     let config = default_config();
     let base = bool_val(true);
     let other = bool_val(false);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, bool_val(false));
 }
 
@@ -172,7 +172,7 @@ fn test_merge_real_to_real() {
     let config = default_config();
     let base = real_val("1.0");
     let other = real_val("2.5");
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, real_val("2.5"));
 }
 
@@ -181,7 +181,7 @@ fn test_merge_null_to_null() {
     let config = default_config();
     let base = null_val();
     let other = null_val();
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, null_val());
 }
 
@@ -190,7 +190,7 @@ fn test_merge_integer_to_string() {
     let config = default_config();
     let base = int_val(42);
     let other = str_val("text");
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, str_val("text"));
 }
 
@@ -199,7 +199,7 @@ fn test_merge_string_to_integer() {
     let config = default_config();
     let base = str_val("text");
     let other = int_val(42);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     assert_eq!(result, int_val(42));
 }
 
@@ -208,7 +208,7 @@ fn test_merge_array_to_hash_error() {
     let config = default_config();
     let base = array_val(vec![str_val("a")]);
     let other = hash_val(vec![("key".to_string(), str_val("value"))]);
-    let result = merge(&base, &other, &config, &[]);
+    let result = merge_values(&base, &other, &config, &[]);
     assert!(result.is_err());
 }
 
@@ -217,7 +217,7 @@ fn test_merge_hash_to_array_error() {
     let config = default_config();
     let base = hash_val(vec![("key".to_string(), str_val("value"))]);
     let other = array_val(vec![str_val("a")]);
-    let result = merge(&base, &other, &config, &[]);
+    let result = merge_values(&base, &other, &config, &[]);
     assert!(result.is_err());
 }
 
@@ -226,7 +226,7 @@ fn test_merge_array_to_string_error() {
     let config = default_config();
     let base = array_val(vec![str_val("a"), str_val("b")]);
     let other = str_val("override");
-    let result = merge(&base, &other, &config, &[]);
+    let result = merge_values(&base, &other, &config, &[]);
     assert!(result.is_err());
 }
 
@@ -235,7 +235,7 @@ fn test_merge_mixed_list_and_string_error() {
     let config = default_config();
     let base = array_val(vec![str_val("a"), int_val(1)]);
     let other = str_val("scalar");
-    let result = merge(&base, &other, &config, &[]);
+    let result = merge_values(&base, &other, &config, &[]);
     assert!(result.is_err());
 }
 
@@ -256,7 +256,7 @@ fn test_merge_deeply_nested_maps() {
             hash_val(vec![("other".to_string(), int_val(2))]),
         )]),
     )]);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
     match &result {
         Value::Hash(h) => {
             let level1 = h.get(&Key::String("level1".to_string()));
@@ -278,7 +278,7 @@ fn test_override_with_tilde() {
     // At merge() level: port: OverrideMarker(443) (override signal preserved for interpolation)
     let base = hash_val(vec![("port".to_string(), int_val(80))]);
     let other = hash_val(vec![("~port".to_string(), int_val(443))]);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
 
     match &result {
         Value::Hash(h) => {
@@ -304,7 +304,7 @@ fn test_override_disabled() {
     // Result: port: 80, ~port: 443 (both keys)
     let base = hash_val(vec![("port".to_string(), int_val(80))]);
     let other = hash_val(vec![("~port".to_string(), int_val(443))]);
-    let result = merge(&base, &other, &config, &[]).unwrap();
+    let result = merge_values(&base, &other, &config, &[]).unwrap();
 
     match &result {
         Value::Hash(h) => {
