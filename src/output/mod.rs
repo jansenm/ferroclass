@@ -1,6 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+//! Output formatting — the format layer of the three-layer architecture.
+//!
+//! The output module transforms domain types from the adapter layer
+//! ([`ansible::AnsibleInventory`], [`salt::TopData`], [`reclass::InventoryOutput`])
+//! into their final serialized form. JSON output uses [`Serialize`]; YAML
+//! output uses the [`YamlOutput`] trait.
+//!
+//! Adapters live in the sub-modules:
+//!
+//! - [`reclass`] — plain reclass-compatible YAML/JSON output
+//! - [`ansible`] — Ansible dynamic inventory and host-vars output
+//! - [`salt`] — Salt top data and pillar output
+
 pub mod ansible;
 pub mod reclass;
 pub mod salt;

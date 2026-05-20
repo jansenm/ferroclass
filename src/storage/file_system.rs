@@ -1,6 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+//! File-system storage backends.
+//!
+//! Provides [`YamlFsRepository`] for the directory-tree layout (`nodes/`,
+//! `classes/`, `_init.yml` autoloading) and [`YamlFileRepository`] for the
+//! single-file layout.
+
 use crate::parser::yaml;
 use snafu::Snafu;
 use std::string::FromUtf8Error;

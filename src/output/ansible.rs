@@ -1,6 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+//! Ansible dynamic inventory output adapter.
+//!
+//! Produces [`AnsibleInventory`] (full `--list` output) and [`HostVars`]
+//! (per-host detail output) in the format expected by Ansible's dynamic
+//! inventory protocol.
+
 use crate::inventory as inv;
 use crate::inventory::options::Options;
 use crate::inventory::value::{Key, Value};

@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+//! Salt output adapter for top data and pillar data.
+//!
+//! Produces [`TopData`] (state-to-node mapping) and [`HostVars`] (per-minion
+//! pillar data) in the format expected by Salt's external pillar system.
+
 use crate::inventory as inv;
 use crate::inventory::options::Options;
 use crate::inventory::value::{Key, Value};

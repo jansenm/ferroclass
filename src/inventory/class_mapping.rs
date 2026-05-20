@@ -1,6 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+//! Class mapping patterns and resolution.
+//!
+//! A class mapping associates a glob or regex pattern against node names (or
+//! node paths) with a list of classes to auto-include. This matches the
+//! Python reclass `class_mappings` configuration option.
+
 use globset::GlobBuilder;
 use regex::Regex;
 use snafu::Snafu;

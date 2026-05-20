@@ -1,6 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+//! Reclass-compatible output adapter.
+//!
+//! Produces [`InventoryOutput`] (full inventory listing) and
+//! [`NodeInfoOutput`] (single-node detail) in the same YAML/JSON format as
+//! Python reclass. Includes `__reclass__` metadata, timestamps, and
+//! application/class lists per node.
+
 use crate::inventory as inv;
 use crate::inventory::value::{Key, Value};
 use hashlink::LinkedHashMap;

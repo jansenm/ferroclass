@@ -1,6 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+//! Value types representing reclass parameter data.
+//!
+//! [`Value`] is the core enum that holds any YAML-compatible value (scalars,
+//! mappings, lists, references, and inventory queries). [`Key`] is the
+//! corresponding map-key type. These are the building blocks for parameters,
+//! exports, and all merge/interpolation operations.
+
 use hashlink::LinkedHashMap;
 use serde::de::{Deserialize, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
@@ -10,19 +17,29 @@ use std::rc::Rc;
 use yaml_rust2::Yaml as YamlValue;
 
 pub use crate::inventory::types::Environment;
+/// Ordered list of class names.
 pub type ClassList = Vec<String>;
 pub use crate::inventory::applications::Applications;
+/// Ordered list of application names (with deduplication and negation semantics).
 pub type ApplicationList = Applications;
+/// Ordered list of reclass values.
 pub type Array = Vec<Value>;
+/// Ordered hash map from [`Key`] to [`Value`], preserving insertion order.
 pub type Hash = LinkedHashMap<Key, Value>;
+/// Alias for [`tyalias@Hash`] — the type used for class/node parameters and exports.
 pub type ParametersType = Hash;
 
+/// Value type errors.
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("environment must be a string, got {value_type}"))]
     InvalidEnvironment { value_type: String },
 }
 
+/// Map key type used in all reclass parameter maps.
+///
+/// Supports the same scalar variants as [`Value`] that are valid as YAML
+/// mapping keys: strings, integers, booleans, and null.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Key {
     Null,
@@ -101,6 +118,24 @@ pub enum ReferencePathSegment {
     Inner(Vec<ReferencePathSegment>),
 }
 
+/// Core value type representing any reclass parameter value.
+///
+/// Each variant corresponds to a YAML type or a reclass-specific internal
+/// marker used during interpolation and merging:
+///
+/// - [`String`](Value::String), [`Integer`](Value::Integer), [`Real`](Value::Real),
+///   [`Boolean`](Value::Boolean), [`Null`](Value::Null) — plain YAML scalars
+/// - [`Array`](Value::Array), [`Hash`](Value::Hash) — ordered collections
+/// - [`Reference`](Value::Reference), [`StringWithReference`](Value::StringWithReference) —
+///   `$[...]` interpolation references and mixed strings
+/// - [`InvQuery`](Value::InvQuery), [`StringWithInvQuery`](Value::StringWithInvQuery) —
+///   inventory query expressions (`$[` and `$[if ...]`)
+/// - [`DeferredMerge`](Value::DeferredMerge) — a list of values awaiting
+///   multi-pass merge resolution
+/// - [`OverrideMarker`](Value::OverrideMarker) — a value prefixed with `~` that
+///   replaces (not deep-merges) its predecessor
+/// - [`ConstantMarker`](Value::ConstantMarker) — a value prefixed with `=` that
+///   blocks future deep-merges
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Array(Rc<Array>),

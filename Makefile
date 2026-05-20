@@ -31,6 +31,8 @@ TARGETS         := all all-do all-end \
                    build-release build-release-do build-release-end \
                    test test-do test-end \
                    check check-do check-end \
+                   doc doc-do doc-end \
+                   docclean docclean-do docclean-end \
                    install install-do install-end \
                    install-bin install-bin-do install-bin-end \
                    install-strip install-strip-do install-strip-end \
@@ -96,6 +98,16 @@ test-do:
 ## check               » run the tests (GNU standard alias)
 check: check-start check-do test check-end
 check-do:
+
+## doc                 » generate API documentation
+doc: doc-start doc-do doc-end
+doc-do:
+	cargo doc --no-deps
+
+## docclean            » remove generated API documentation
+docclean: docclean-start docclean-do docclean-end
+docclean-do:
+	rm -rf target/doc
 
 ## dist                » create source and vendor tarballs
 dist: dist-start vendor dist-do dist-end

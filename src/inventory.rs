@@ -1,6 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+//! Core inventory types, loading, and merging.
+//!
+//! This module contains [`Inventory`] (the central data structure that holds
+//! all loaded classes and nodes), the [`load`] family of functions for reading
+//! from disk or YAML strings, and [`Inventory::merge_node`]/[`Inventory::merge_class`]
+//! for resolving inheritance and interpolation.
+//!
+//! Key re-exports:
+//!
+//! - [`Class`] and [`Node`] — the two fundamental element types
+//! - [`MergeError`] and [`ValueMergeError`] — error types from the merge pipeline
+//! - [`merge_values`] — the low-level value-merge function used by the pipeline
+
 use crate::inventory::class_mapping::ClassMapping;
 use crate::inventory::options::{
     MergeConfig, StorageOptions, StorageType, YamlFileStorageOptions, YamlFsStorageOptions,
@@ -57,6 +70,11 @@ pub fn create_automatic_parameters(nodename: &str, environment: &Environment) ->
     params
 }
 
+/// The central data structure holding all loaded classes and nodes.
+///
+/// An `Inventory` is populated by [`load`] or [`load_from_yaml_string`] and
+/// provides methods to query, iterate over, and merge individual nodes and
+/// classes.
 #[derive(Debug, Default)]
 pub struct Inventory {
     classes: LinkedHashMap<String, Class>,
@@ -94,10 +112,12 @@ impl<'a> Iterator for Classes<'a> {
 }
 
 impl Inventory {
+    /// Create an empty inventory with default merge configuration.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Create an empty inventory with the given merge configuration.
     pub fn new_with_config(merge_config: MergeConfig) -> Self {
         Self {
             classes: LinkedHashMap::new(),
@@ -109,35 +129,43 @@ impl Inventory {
         }
     }
 
+    /// Return the current merge configuration.
     pub fn merge_config(&self) -> &MergeConfig {
         &self.merge_config
     }
 
+    /// Set the merge configuration, compiling any regex patterns.
     pub fn set_merge_config(&mut self, mut config: MergeConfig) {
         config.compile_regexps();
         self.merge_config = config;
     }
 
+    /// Return the configured class mappings.
     pub fn class_mappings(&self) -> &[ClassMapping] {
         &self.class_mappings
     }
 
+    /// Set the class mappings (glob/regex patterns that auto-include classes).
     pub fn set_class_mappings(&mut self, mappings: Vec<ClassMapping>) {
         self.class_mappings = mappings;
     }
 
+    /// Whether class mapping patterns match against the node path instead of name.
     pub fn class_mappings_match_path(&self) -> bool {
         self.class_mappings_match_path
     }
 
+    /// Set whether class mapping patterns match against the node path.
     pub fn set_class_mappings_match_path(&mut self, match_path: bool) {
         self.class_mappings_match_path = match_path;
     }
 
+    /// Set extra input data to merge into every node (top-level defaults).
     pub fn set_input_data(&mut self, data: ParametersType) {
         self.input_data = Some(data);
     }
 
+    /// Return the extra input data, if any.
     pub fn input_data(&self) -> Option<&ParametersType> {
         self.input_data.as_ref()
     }
@@ -171,26 +199,31 @@ impl Inventory {
         Ok(())
     }
 
+    /// Iterate over all loaded nodes.
     pub fn nodes_iter(&self) -> Nodes<'_> {
         Nodes {
             iterator: self.nodes.iter(),
         }
     }
 
+    /// Iterate over all loaded classes.
     pub fn classes_iter(&self) -> Classes<'_> {
         Classes {
             iterator: self.classes.iter(),
         }
     }
 
+    /// Look up a class by name.
     pub fn get_class(&self, name: &str) -> Option<&Class> {
         self.classes.get(name)
     }
 
+    /// Look up a node by name.
     pub fn get_node(&self, name: &str) -> Option<&Node> {
         self.nodes.get(name)
     }
 
+    /// Resolve the full inheritance chain for a class and return the merged result.
     pub fn merge_class(&self, class_name: &str) -> Result<Class, Error> {
         let class = self
             .get_class(class_name)
@@ -200,6 +233,11 @@ impl Inventory {
         merge::merge_class(self, class, &self.merge_config).map_err(Into::into)
     }
 
+    /// Resolve the full inheritance and interpolation chain for a node.
+    ///
+    /// This is the primary method for obtaining a fully-merged node. It applies
+    /// class mappings, resolves the inheritance chain, interpolates `$[...]`
+    /// references, processes inventory queries, and adds `_reclass_` metadata.
     pub fn merge_node(&self, node_name: &str) -> Result<Node, Error> {
         let node = self
             .get_node(node_name)
@@ -217,10 +255,16 @@ impl Inventory {
         .map_err(Into::into)
     }
 
+    /// Return the names of all loaded nodes in insertion order.
     pub fn node_names(&self) -> Vec<String> {
         self.nodes.keys().cloned().collect()
     }
 
+    /// Build a map of all merged nodes for inventory-query resolution.
+    ///
+    /// Each entry maps a node name to its merged exports and environment.
+    /// Failed nodes are skipped if `ignore_failed_node` is enabled in the
+    /// merge configuration.
     pub fn build_inventory_map(&self) -> Result<inv_query::InventoryMap, Error> {
         let mut inventory_map = inv_query::InventoryMap::new();
         for node_name in self.node_names() {
@@ -250,6 +294,8 @@ impl Inventory {
         Ok(inventory_map)
     }
 
+    /// Like [`merge_node`](Inventory::merge_node), but resolves inventory queries
+    /// against the provided pre-built inventory map instead of building one on the fly.
     pub fn merge_node_with_inventory(
         &self,
         node_name: &str,
@@ -273,6 +319,7 @@ impl Inventory {
     }
 }
 
+/// Errors that can occur during inventory loading or node/class merging.
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("error loading repository at '{base_uri}'"))]
@@ -310,6 +357,12 @@ impl From<merge::Error> for Error {
     }
 }
 
+/// Load an inventory from a storage backend (directory tree or single file).
+///
+/// This is the primary entry point for loading inventory data. The storage
+/// backend and path are determined by [`StorageOptions`].
+///
+/// [`StorageOptions`]: crate::inventory::options::StorageOptions
 pub fn load(storage_options: &StorageOptions) -> Result<Inventory, Error> {
     match storage_options.storage_type {
         StorageType::YamlFs => load_yaml_fs(&storage_options.yaml_fs_options),
@@ -317,6 +370,10 @@ pub fn load(storage_options: &StorageOptions) -> Result<Inventory, Error> {
     }
 }
 
+/// Load an inventory from a YAML string (for testing or embedded data).
+///
+/// Uses the default base URI of `<memory>`. See [`load_from_yaml_string_with_uri`]
+/// for specifying a custom base URI.
 pub fn load_from_yaml_string(
     yaml_content: &str,
     parameter_key_style: &options::ParameterKeyStyle,
@@ -324,6 +381,10 @@ pub fn load_from_yaml_string(
     load_from_yaml_string_with_uri(yaml_content, parameter_key_style, None)
 }
 
+/// Load an inventory from a YAML string with an explicit base URI.
+///
+/// The `base_uri` is used in error messages to identify where the data came
+/// from. Pass `None` to use `<memory>` as the base URI.
 pub fn load_from_yaml_string_with_uri(
     yaml_content: &str,
     parameter_key_style: &options::ParameterKeyStyle,

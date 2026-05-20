@@ -1,6 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+//! Class and node element types.
+//!
+//! [`Class`] represents a YAML class definition with parameters, exports,
+//! applications, and an inheritance chain. [`Node`] represents a node
+//! definition with the same fields plus an environment.
+
 pub mod class;
 pub use class::Class;
 

@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+//! Configuration file loading and resolution.
+//!
+//! Looks for `reclass-config.yml` on standard paths, parses the file, and
+//! converts the result into [`Options`] that the inventory loader accepts.
+
 use crate::configuration_file;
 use crate::inventory::class_mapping;
 use crate::inventory::class_mapping::ClassMapping;
