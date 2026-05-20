@@ -18,12 +18,14 @@ use yaml_rust2::Yaml;
 
 use super::{ReclassMap, YamlOutput};
 
+/// Errors that can occur while building Ansible inventory or host-vars output.
 #[derive(Debug, Snafu)]
 pub enum AnsibleInventoryError {
     #[snafu(transparent)]
     InventoryLoad { source: inv::Error },
 }
 
+/// Ansible dynamic inventory, containing groups and host variables.
 pub struct AnsibleInventory {
     groups: LinkedHashMap<String, Vec<String>>,
     hostvars: LinkedHashMap<String, AnsibleNodeInfo>,
@@ -145,6 +147,7 @@ impl<'a> Serialize for HostvarsMap<'a> {
     }
 }
 
+/// Per-node metadata and resolved parameters for Ansible host variables.
 pub struct AnsibleNodeInfo {
     pub node: String,
     pub uri: String,
@@ -249,6 +252,7 @@ impl YamlOutput for AnsibleNodeInfo {
     }
 }
 
+/// Errors that can occur while building host variables for a single node.
 #[derive(Debug, Snafu)]
 pub enum HostVarsError {
     #[snafu(transparent)]
@@ -262,6 +266,7 @@ pub enum HostVarsError {
     },
 }
 
+/// Resolved parameters for a single Ansible host.
 pub struct HostVars {
     pub parameters: LinkedHashMap<Key, Value>,
 }
@@ -285,6 +290,10 @@ impl YamlOutput for HostVars {
     }
 }
 
+/// Insert `classes` and `applications` into the `_reclass_` key of a parameter map.
+///
+/// If the map already contains a `_reclass_` hash, the lists are added into it;
+/// otherwise a new `_reclass_` hash is created.
 pub fn inject_classes_and_applications_into_reclass(
     parameters: &mut LinkedHashMap<Key, Value>,
     classes: &[String],
@@ -312,6 +321,10 @@ pub fn inject_classes_and_applications_into_reclass(
     }
 }
 
+/// Build a complete Ansible dynamic inventory from configuration.
+///
+/// `applications_postfix` is the suffix appended to group names (e.g. `"_grp"`).
+/// `timestamp` is included in the `__reclass__` metadata.
 pub fn build_inventory(
     config: &Options,
     applications_postfix: &str,
@@ -416,6 +429,11 @@ pub fn build_inventory(
     Ok(AnsibleInventory { groups, hostvars })
 }
 
+/// Build host variables for a single Ansible host.
+///
+/// Merges the node, resolves inventory queries, and returns the
+/// `AnsibleNodeInfo` containing parameters, classes, applications, and
+/// `__reclass__` metadata.
 pub fn build_host_vars(
     config: &Options,
     hostname: &str,

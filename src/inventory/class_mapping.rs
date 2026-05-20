@@ -11,9 +11,10 @@ use globset::GlobBuilder;
 use regex::Regex;
 use snafu::Snafu;
 
+/// Errors that can occur while parsing a class mapping pattern.
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("invalid mapping format: {message}"))]
+    #[snafu(display("invalid class mapping format: {message}"))]
     InvalidFormat { message: String },
     #[snafu(display("invalid glob pattern '{pattern}'"))]
     InvalidGlob {
@@ -27,12 +28,16 @@ pub enum Error {
     },
 }
 
+/// A pattern that matches node names, either as a glob or a regex.
 #[derive(Debug, Clone)]
 pub enum MappingPattern {
     Glob(globset::GlobMatcher),
     Regex(Regex),
 }
 
+/// A class mapping associates a node-name pattern with a list of classes
+/// to auto-include. Parsed from strings like `"node* default webserver"`
+/// (glob) or `/\.(.+)$/ env-\1` (regex with back-reference).
 #[derive(Debug, Clone)]
 pub struct ClassMapping {
     pattern: MappingPattern,

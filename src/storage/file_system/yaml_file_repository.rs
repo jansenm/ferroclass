@@ -13,12 +13,16 @@ use std::rc::Rc;
 use std::{fs, path};
 
 #[derive(Debug)]
+/// Single-file YAML repository for class and node definitions.
+///
+/// Reads all classes and nodes from a single YAML multi-document file.
 pub struct YamlFileRepository {
     file_path: PathBuf,
     parameter_key_style: ParameterKeyStyle,
     default_environment: Environment,
 }
 
+/// Metadata extracted from a YAML file's first document (the class/node URI hints).
 #[derive(Debug, Default)]
 pub struct InventoryMetadata {
     pub classes_uri: Option<String>,

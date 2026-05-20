@@ -24,6 +24,10 @@ use hashlink::LinkedHashMap;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use yaml_rust2::Yaml;
 
+/// Serialize a value to JSON.
+///
+/// When `pretty` is true, the output is indented with newlines;
+/// otherwise compact single-line JSON is produced.
 pub fn format_json<T: Serialize>(value: &T, pretty: bool) -> Result<String, serde_json::Error> {
     if pretty {
         serde_json::to_string_pretty(value)
@@ -32,6 +36,10 @@ pub fn format_json<T: Serialize>(value: &T, pretty: bool) -> Result<String, serd
     }
 }
 
+/// Serialize a [`Yaml`] value to a YAML string.
+///
+/// When `pretty` is true, the emitter uses multiline block style
+/// and preserves string newlines.
 pub fn format_yaml(yaml_value: &Yaml, pretty: bool) -> Result<String, yaml_rust2::EmitError> {
     let mut output = String::new();
     let mut emitter = yaml_rust2::YamlEmitter::new(&mut output);
@@ -43,6 +51,12 @@ pub fn format_yaml(yaml_value: &Yaml, pretty: bool) -> Result<String, yaml_rust2
     Ok(output)
 }
 
+/// Format a value as JSON or YAML according to the given output format.
+///
+/// This is the primary formatting entry point used by all binary adapters.
+/// For JSON, the value must implement [`Serialize`]; for YAML, it must
+/// implement [`YamlOutput`]. The `sorted` flag controls whether YAML
+/// mapping keys are emitted in alphabetical order.
 pub fn format_output<T: Serialize + YamlOutput>(
     value: &T,
     output_format: OutputFormat,
@@ -58,6 +72,10 @@ pub fn format_output<T: Serialize + YamlOutput>(
     }
 }
 
+/// Trait for types that can render themselves as a YAML value tree.
+///
+/// When `sorted` is true, all mapping keys at every nesting level
+/// are emitted in alphabetical order.
 pub trait YamlOutput {
     fn to_yaml_value(&self, sorted: bool) -> Yaml;
 }
@@ -110,6 +128,8 @@ fn yaml_key_cmp(a: &Yaml, b: &Yaml) -> std::cmp::Ordering {
     }
 }
 
+/// Return the current local time formatted as a reclass-style timestamp
+/// (e.g. `Thu May 20 14:30:00 2026`).
 #[cfg(not(tarpaulin_include))]
 pub fn format_timestamp() -> String {
     chrono::Local::now()

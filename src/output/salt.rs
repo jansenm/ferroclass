@@ -18,12 +18,15 @@ use yaml_rust2::Yaml;
 use super::YamlOutput;
 use super::ansible::{self, HostVars};
 
+/// Errors that can occur while building Salt top data.
 #[derive(Debug, Snafu)]
 pub enum TopError {
     #[snafu(transparent)]
     TopInventoryLoad { source: inv::Error },
 }
 
+/// Salt top-file data — a mapping from environment names to
+/// node names to state lists.
 pub struct TopData {
     environments: LinkedHashMap<String, LinkedHashMap<String, Vec<String>>>,
 }
@@ -96,6 +99,7 @@ impl YamlOutput for TopData {
     }
 }
 
+/// Errors that can occur while building Salt pillar data.
 #[derive(Debug, Snafu)]
 pub enum PillarError {
     #[snafu(transparent)]
@@ -146,6 +150,10 @@ fn inject_salt_reclass_fields(
     }
 }
 
+/// Build Salt top data from configuration.
+///
+/// Returns a [`TopData`] mapping each environment to its nodes and
+/// their state lists.
 pub fn build_top(config: &Options) -> Result<TopData, TopError> {
     let merge_config = config.build_merge_config();
     let ignore_failed_node = merge_config.inventory_ignore_failed_node;
@@ -208,6 +216,10 @@ pub fn build_top(config: &Options) -> Result<TopData, TopError> {
     Ok(TopData { environments })
 }
 
+/// Build Salt pillar data for a single minion.
+///
+/// Merges the node, resolves inventory queries, and returns the
+/// host variables including `__reclass__` metadata.
 pub fn build_pillar(config: &Options, minion_id: &str) -> Result<HostVars, PillarError> {
     let merge_config = config.build_merge_config();
     let ignore_failed_render = merge_config.inventory_ignore_failed_render;

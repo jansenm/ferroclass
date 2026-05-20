@@ -15,10 +15,16 @@ use std::path::{Path, PathBuf};
 use std::{fs, path};
 
 #[derive(Debug)]
+/// Supported YAML file formats (currently only multi-document YAML).
 pub enum FileFormat {
     Yaml,
 }
 
+/// Filesystem repository for YAML class and node definitions.
+///
+/// Walks the `nodes/` and `classes/` directories under a base URI,
+/// loading `_init.yml` files and composing node names from directory
+/// structure.
 #[derive(Debug)]
 pub struct YamlFsRepository {
     base_directory: PathBuf,

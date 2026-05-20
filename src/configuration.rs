@@ -18,8 +18,10 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+/// The default configuration file name searched for on disk.
 pub const CONFIG_FILE_NAME: &str = "reclass-config.yml";
 
+/// Errors that can occur while loading or resolving configuration.
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("cannot read configuration from '{path}'"))]
@@ -83,6 +85,9 @@ pub fn configuration_paths(path: &Path) -> Result<Vec<PathBuf>, Error> {
     ]))
 }
 
+/// Search for a configuration file in standard locations starting from `path`.
+///
+/// Returns `Ok(Some(path))` if a config file is found, `Ok(None)` otherwise.
 pub fn lookup(path: &Path) -> Result<Option<PathBuf>, Error> {
     for path in configuration_paths(path)? {
         let config_file = path.join(CONFIG_FILE_NAME);
@@ -95,6 +100,9 @@ pub fn lookup(path: &Path) -> Result<Option<PathBuf>, Error> {
     Ok(None)
 }
 
+/// Load configuration from the first `reclass-config.yml` found on the search path.
+///
+/// Returns an [`Options`] struct ready to pass to [`crate::inventory::load`].
 #[cfg(not(tarpaulin_include))]
 pub fn load(path: &Path) -> Result<Options, Error> {
     tracing::debug!("Looking for configuration file");

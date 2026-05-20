@@ -8,6 +8,7 @@ use serde::ser::{Serialize, SerializeMap, Serializer};
 use yaml_rust2::Yaml as YamlValue;
 
 #[derive(Debug, PartialEq, Clone)]
+/// A reclass node with name, applications, classes, parameters, exports, environment, and URI.
 pub struct Node {
     applications: Applications,
     classes: ClassList,

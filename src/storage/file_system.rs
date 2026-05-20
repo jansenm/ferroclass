@@ -21,6 +21,7 @@ use crate::inventory::elements::{class_parser, node_parser};
 pub use repository::YamlFsRepository;
 pub use yaml_file_repository::YamlFileRepository;
 
+/// Errors that can occur while reading YAML files from a filesystem repository.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(in super::file_system)))]
 pub enum Error {

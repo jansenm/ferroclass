@@ -18,12 +18,14 @@ use yaml_rust2::Yaml;
 
 use super::{ReclassMap, YamlOutput};
 
+/// Errors that can occur while building a reclass inventory or node-info output.
 #[derive(Debug, Snafu)]
 pub enum InventoryError {
     #[snafu(transparent)]
     InventoryLoad { source: inv::Error },
 }
 
+/// A timestamp wrapper that serializes as `{timestamp: "..."}` in JSON/YAML.
 #[derive(Debug, serde::Serialize, Default)]
 pub struct ReclassTimestamp {
     timestamp: String,
@@ -82,6 +84,7 @@ fn build_reclass_parameter(
     )
 }
 
+/// A merged node together with a timestamp, serializable in reclass-compatible format.
 #[derive(Debug)]
 pub struct NodeWithMetadata {
     pub node: inv::Node,
@@ -123,6 +126,11 @@ impl Serialize for NodeWithMetadata {
     }
 }
 
+/// Full reclass-compatible inventory output.
+///
+/// Contains all nodes, classes, and applications with `__reclass__` metadata.
+/// Use [`InventoryOutput::from_inventory`] to construct and
+/// [`crate::output::format_output`] to serialize.
 #[derive(Debug, serde::Serialize, Default)]
 pub struct InventoryOutput {
     #[serde(serialize_with = "serialize_reclass_timestamp")]
@@ -167,6 +175,12 @@ fn serialize_classes_map<S: Serializer>(
 }
 
 impl InventoryOutput {
+    /// Build a full inventory output from the given [`crate::inventory::Inventory`].
+    ///
+    /// Merges all nodes, collects classes and applications, and resolves
+    /// inventory queries. Failed nodes are skipped when `ignore_failed_node`
+    /// is true; failed inv-query renders are skipped when
+    /// `ignore_failed_render` is true.
     pub fn from_inventory(
         inventory: &inv::Inventory,
         timestamp: &str,
@@ -249,6 +263,10 @@ impl InventoryOutput {
         })
     }
 
+    /// Sort node keys, class lists, and application lists alphabetically.
+    ///
+    /// Call this before serialization if you need deterministic output
+    /// order (e.g. for snapshot tests or diff-friendly output).
     pub fn sort_keys(&mut self) {
         let mut sorted_nodes: Vec<(String, NodeWithMetadata)> = self.nodes.drain().collect();
         sorted_nodes.sort_by(|a, b| a.0.cmp(&b.0));
@@ -360,6 +378,10 @@ struct ReclassInfo {
     timestamp: String,
 }
 
+/// Single-node detail output in reclass-compatible format.
+///
+/// Contains the resolved node with `__reclass__` metadata, classes,
+/// applications, parameters, and exports.
 #[derive(Debug, serde::Serialize)]
 pub struct NodeInfoOutput {
     #[serde(serialize_with = "serialize_reclass_info")]
@@ -412,6 +434,7 @@ fn serialize_parameters<S: Serializer>(
 }
 
 impl NodeInfoOutput {
+    /// Build a node-info output from a single merged node.
     pub fn from_node(node: &inv::Node, timestamp: &str) -> Self {
         let mut parameters = LinkedHashMap::new();
         let (reclass_key, reclass_value) =
