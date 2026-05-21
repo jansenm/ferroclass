@@ -3,7 +3,7 @@
 
 Name:           ferroclass
 Version:        0.11.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Hierarchical inventory management tool (reclass compatible)
 
 # Ferroclass is MPL-2.0. Vendored dependencies have their own licenses;
@@ -28,6 +28,8 @@ BuildRequires:  cargo-rpm-macros
 BuildRequires:  rust-packaging
 BuildRequires:  cargo
 %endif
+
+%debug_package
 
 # The ferroclass binary provides the core inventory and node-info
 # functionality. All three binaries (ferroclass, ferroclass-ansible,
@@ -87,7 +89,7 @@ cargo build --release --frozen %{?_smp_mflags}
 %endif
 
 # Generate vendored dependency manifest for license compliance.
-# Fedora guidelines require cargo-vendor.txt as %license.
+# Fedora guidelines require cargo-vendor.txt as %%license.
 %if 0%{?cargo_vendor_manifest:1}
 %cargo_vendor_manifest
 %endif
@@ -129,6 +131,10 @@ install -m 0644 man/ferroclass-salt.1 %{buildroot}%{_mandir}/man1/ferroclass-sal
 %{_mandir}/man1/ferroclass-salt.1*
 
 %changelog
+* Wed May 21 2026 Michael Jansen <mike@michael-jansen.biz> - 0.11.0-2
+- Add %%debug_package for proper binary stripping and debuginfo packages
+- Escape %%license macro in comment to fix rpmlint warning
+
 * Tue May 19 2026 Michael Jansen <mike@michael-jansen.biz> - 0.10.1-1
 - Improve error messages by eliminating pass-through error layers
 - Add docs/conventions.md documenting error handling patterns
