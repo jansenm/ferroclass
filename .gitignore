@@ -30,3 +30,7 @@ packaging/obs/.osc/
 # Old git history backup
 .git.old/
 
+
+# Reference files
+fedora
+wiki

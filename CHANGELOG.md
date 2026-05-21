@@ -8,6 +8,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-05-21
+
+### Added
+
+- **API documentation.** Added module-level (`//!`) and item-level (`///`) doc
+  comments across all public modules: `inventory`, `output`, `configuration`,
+  `storage`, `cli`, and their sub-modules. Core types (`Inventory`, `Value`,
+  `Key`, `Error` enums, output adapters) are fully documented.
+- **Added `make doc` and `make docclean` targets** to the Makefile.
+- **Added `documentation = "https://docs.rs/ferroclass"`** to `Cargo.toml`.
+
+### Changed
+
+- **Tightened public API surface.** Internal implementation modules
+  (`applications`, `interpolation`, `inv_query`, `merge`, `value_merge`,
+  `configuration_file`, `parser`) are now `pub(crate)` instead of `pub`. Selective
+  re-exports (`MergeError`, `ValueMergeError`, `merge_values`) are available
+  from the `inventory` module.
+- **Added crate-root re-exports.** The most commonly used types are now
+  accessible directly from `ferroclass::` (e.g., `ferroclass::Inventory`,
+  `ferroclass::load`, `ferroclass::Options`, `ferroclass::StorageOptions`).
+- **`docclean` Makefile target** now removes the entire `target/doc/` directory.
+
+### Removed
+
+- **Public access to internal modules removed.** Code that referenced
+  `ferroclass::inventory::value_merge::merge` should use
+  `ferroclass::inventory::merge_values` instead. Code that referenced
+  `ferroclass::inventory::merge::Error` should use
+  `ferroclass::inventory::MergeError` instead. This is a breaking change.
+
 ## [0.10.1] - 2026-05-19
 
 ### Changed

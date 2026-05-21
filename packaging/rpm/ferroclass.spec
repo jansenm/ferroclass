@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 Name:           ferroclass
-Version:        0.10.1
+Version:        0.11.0
 Release:        1%{?dist}
 Summary:        Hierarchical inventory management tool (reclass compatible)
 

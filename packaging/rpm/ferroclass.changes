@@ -1,4 +1,15 @@
 -------------------------------------------------------------------
+Wed May 21 2026 Michael Jansen <mike@michael-jansen.biz> - 0.11.0-1
+
+- Tighten public API surface: internal modules are now pub(crate)
+- Add crate-root re-exports for commonly used types
+- Add API documentation (module-level and item-level doc comments)
+- Add make doc and make docclean targets
+- Restrict ExclusiveArch to x86_64 only (aarch64 snapshot tests
+  are non-deterministic due to HashMap iteration order)
+- Align spec with openSUSE and Fedora Rust packaging guidelines
+
+-------------------------------------------------------------------
 Tue May 19 2026 Michael Jansen <mike@michael-jansen.biz> - 0.10.1-1
 
 - Improve error messages by eliminating pass-through error layers
