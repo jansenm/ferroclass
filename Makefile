@@ -43,8 +43,9 @@ TARGETS         := all all-do all-end \
                    sign sign-do sign-end \
                    tag tag-do tag-end \
                    release-gh release-gh-do release-gh-end \
-                   release release-do release-end \
-                   bump-version bump-version-do bump-version-end \
+                    release release-do release-end \
+                    publish-crates publish-crates-do publish-crates-end \
+                    bump-version bump-version-do bump-version-end \
                    osc-sync osc-sync-do osc-sync-end \
                    packaging packaging-do packaging-end \
                    setup-reclass setup-reclass-do setup-reclass-end \
@@ -154,8 +155,13 @@ bump-version-do:
 	perl -i -pe 'BEGIN { $$n=0; } $$n++ < 1 && s/^version = ".*"/version = "$(VERSION_NEW)"/g' Cargo.toml
 	@echo "Version bumped to $(VERSION_NEW). Update CHANGELOG.md before releasing."
 
+## publish-crates     » publish the crate to crates.io
+publish-crates: publish-crates-start publish-crates-do publish-crates-end
+publish-crates-do:
+	cargo publish --registry crates-io
+
 ## release            » full release: verify, build, package, tag, and publish
-release: release-start commit dist checksums tag release-gh osc-sync osc-add osc-commit release-end
+release: release-start commit dist checksums tag release-gh publish-crates osc-sync osc-add osc-commit release-end
 release-do:
 
 ##
