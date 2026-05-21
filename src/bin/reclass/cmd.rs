@@ -18,7 +18,7 @@ pub(crate) enum Error {
     NodeNotFound { node_name: String },
     #[snafu(display("error merging node '{node_name}'"))]
     Merge {
-        source: inv::Error,
+        source: Box<inv::Error>,
         node_name: String,
     },
     #[snafu(display("error serializing output: {message}"))]
@@ -78,7 +78,7 @@ pub(crate) fn nodeinfo_main(config: Options, node_name: &str) -> Result<(), Erro
     let merged = inventory_obj
         .merge_node(node_name)
         .map_err(|e| Error::Merge {
-            source: e,
+            source: Box::new(e),
             node_name: node_name.to_string(),
         })?;
 

@@ -261,7 +261,7 @@ pub enum HostVarsError {
     NodeNotFound { node_name: String },
     #[snafu(display("error merging node '{node_name}'"))]
     Merge {
-        source: inv::Error,
+        source: Box<inv::Error>,
         node_name: String,
     },
 }
@@ -455,7 +455,7 @@ pub fn build_host_vars(
     let merged = inventory
         .merge_node(hostname)
         .map_err(|e| HostVarsError::Merge {
-            source: e,
+            source: Box::new(e),
             node_name: hostname.to_string(),
         })?;
 
@@ -481,7 +481,7 @@ pub fn build_host_vars(
                     );
                 }
                 return Err(HostVarsError::Merge {
-                    source: e,
+                    source: Box::new(e),
                     node_name: hostname.to_string(),
                 });
             }

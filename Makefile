@@ -20,7 +20,7 @@ TARBALL_SHA256   := $(TARBALL).sha256
 VENDOR_SHA256   := $(VENDOR_TARBALL).sha256
 TARBALL_ASC     := $(TARBALL).asc
 VENDOR_ASC      := $(VENDOR_TARBALL).asc
-GPG_KEY          ?= mike@michael-jansen.biz
+GPG_KEY          ?= ferroclass@michael-jansen.biz
 GH_REPO          ?= jansenm/ferroclass
 GH_REMOTE        ?= github
 
@@ -143,6 +143,7 @@ release-gh-do:
 	@CHANGELOG=$$(sed -n '/^## \[$(VERSION)\]/,/^## \[/{/^## \[/!p}' CHANGELOG.md); \
 	gh release create v$(VERSION) \
 		$(TARBALL) $(VENDOR_TARBALL) \
+		$(TARBALL_ASC) $(VENDOR_ASC) \
 		$(TARBALL_SHA256) $(VENDOR_SHA256) \
 		--title "v$(VERSION)" \
 		--notes "$$CHANGELOG"
@@ -161,7 +162,7 @@ publish-crates-do:
 	cargo publish --registry crates-io
 
 ## release            » full release: verify, build, package, tag, and publish
-release: release-start commit dist checksums tag release-gh publish-crates osc-sync osc-add osc-commit release-end
+release: release-start commit dist checksums sign tag release-gh publish-crates osc-sync osc-add osc-commit release-end
 release-do:
 
 ##

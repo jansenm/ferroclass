@@ -108,7 +108,7 @@ pub enum PillarError {
     NodeNotFound { node_name: String },
     #[snafu(display("error merging node '{node_name}'"))]
     Merge {
-        source: inv::Error,
+        source: Box<inv::Error>,
         node_name: String,
     },
 }
@@ -237,7 +237,7 @@ pub fn build_pillar(config: &Options, minion_id: &str) -> Result<HostVars, Pilla
     let merged = inventory
         .merge_node(minion_id)
         .map_err(|e| PillarError::Merge {
-            source: e,
+            source: Box::new(e),
             node_name: minion_id.to_string(),
         })?;
 
@@ -260,7 +260,7 @@ pub fn build_pillar(config: &Options, minion_id: &str) -> Result<HostVars, Pilla
                     );
                 }
                 return Err(PillarError::Merge {
-                    source: e,
+                    source: Box::new(e),
                     node_name: minion_id.to_string(),
                 });
             }
