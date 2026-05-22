@@ -160,4 +160,73 @@ mod tests {
         let result = apply_options(&mut config, &cli).unwrap();
         assert!(result.ignore_class_notfound);
     }
+
+    #[test]
+    fn test_apply_options_compose_node_name() {
+        let mut config = default_options();
+        let mut cli = default_cli();
+        cli.storage_options.compose_node_name = true;
+        let result = apply_options(&mut config, &cli).unwrap();
+        assert!(result.storage_options.yaml_fs_options.compose_node_name);
+    }
+
+    #[test]
+    fn test_apply_options_default_environment() {
+        use ferroclass::inventory::types::Environment;
+        let mut config = default_options();
+        config.default_environment = Environment::from("staging");
+        let cli = default_cli();
+        let result = apply_options(&mut config, &cli).unwrap();
+        assert_eq!(
+            result.storage_options.yaml_fs_options.default_environment,
+            Environment::from("staging")
+        );
+        assert_eq!(
+            result.storage_options.yaml_file_options.default_environment,
+            Environment::from("staging")
+        );
+        assert_eq!(result.default_environment, Environment::from("staging"));
+    }
+
+    #[test]
+    fn test_apply_options_inventory_base_uri_tilde_expansion() {
+        let mut config = default_options();
+        let mut cli = default_cli();
+        cli.storage_options.inventory_base_uri = Some("~/inventory".to_string());
+        let result = apply_options(&mut config, &cli).unwrap();
+        let expanded = &result.storage_options.yaml_fs_options.inventory_base_uri;
+        assert!(
+            !expanded.starts_with('~'),
+            "tilde should be expanded: got '{expanded}'"
+        );
+        assert!(
+            expanded.ends_with("/inventory"),
+            "path suffix should be preserved: got '{expanded}'"
+        );
+    }
+
+    #[test]
+    fn test_apply_options_inventory_base_uri_env_expansion() {
+        // SAFETY: This test sets a unique env var for the duration of the
+        // test and removes it at the end. No other thread reads this var.
+        let key = "FERROCLASS_TEST_APPLY_OPTIONS_HOME";
+        let was_set;
+        unsafe {
+            was_set = std::env::var(key).is_ok();
+            std::env::set_var(key, "/tmp/ferroclass-test-cfg");
+        }
+        let mut config = default_options();
+        let mut cli = default_cli();
+        cli.storage_options.inventory_base_uri = Some(format!("${{{key}}}/inventory"));
+        let result = apply_options(&mut config, &cli).unwrap();
+        assert_eq!(
+            result.storage_options.yaml_fs_options.inventory_base_uri,
+            "/tmp/ferroclass-test-cfg/inventory"
+        );
+        unsafe {
+            if !was_set {
+                std::env::remove_var(key);
+            }
+        }
+    }
 }
