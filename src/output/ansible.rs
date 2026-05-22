@@ -290,35 +290,37 @@ impl YamlOutput for HostVars {
     }
 }
 
-/// Insert `classes` and `applications` into the `_reclass_` key of a parameter map.
+/// Insert `classes` and `applications` into the `__reclass__` key of a parameter map.
 ///
-/// If the map already contains a `_reclass_` hash, the lists are added into it;
-/// otherwise a new `_reclass_` hash is created.
+/// If the map already contains a `__reclass__` hash, the lists are added into it;
+/// otherwise a new `__reclass__` hash is created. The `_reclass_` key from
+/// automatic parameters is left untouched.
 pub fn inject_classes_and_applications_into_reclass(
     parameters: &mut LinkedHashMap<Key, Value>,
     classes: &[String],
     applications: &[String],
 ) {
-    let reclass_key = Key::String("_reclass_".to_string());
-    if let Some(Value::Hash(reclass_hash)) = parameters.remove(&reclass_key) {
-        let mut reclass_hash = Rc::try_unwrap(reclass_hash).unwrap_or_else(|rc| (*rc).clone());
-        reclass_hash.insert(
-            Key::String("classes".to_string()),
-            Value::Array(Rc::new(
-                classes.iter().map(|s| Value::String(s.clone())).collect(),
-            )),
-        );
-        reclass_hash.insert(
-            Key::String("applications".to_string()),
-            Value::Array(Rc::new(
-                applications
-                    .iter()
-                    .map(|s| Value::String(s.clone()))
-                    .collect(),
-            )),
-        );
-        parameters.insert(reclass_key, Value::Hash(Rc::new(reclass_hash)));
-    }
+    let reclass_key = Key::String("__reclass__".to_string());
+    let mut reclass_hash = match parameters.remove(&reclass_key) {
+        Some(Value::Hash(h)) => Rc::try_unwrap(h).unwrap_or_else(|rc| (*rc).clone()),
+        _ => LinkedHashMap::new(),
+    };
+    reclass_hash.insert(
+        Key::String("classes".to_string()),
+        Value::Array(Rc::new(
+            classes.iter().map(|s| Value::String(s.clone())).collect(),
+        )),
+    );
+    reclass_hash.insert(
+        Key::String("applications".to_string()),
+        Value::Array(Rc::new(
+            applications
+                .iter()
+                .map(|s| Value::String(s.clone()))
+                .collect(),
+        )),
+    );
+    parameters.insert(reclass_key, Value::Hash(Rc::new(reclass_hash)));
 }
 
 /// Build a complete Ansible dynamic inventory from configuration.
@@ -521,7 +523,10 @@ mod tests {
         let mut params = LinkedHashMap::new();
         let mut reclass_inner = LinkedHashMap::new();
         reclass_inner.insert(Key::from("name"), Value::String("test".to_string()));
-        params.insert(Key::from("_reclass_"), Value::Hash(Rc::new(reclass_inner)));
+        params.insert(
+            Key::from("__reclass__"),
+            Value::Hash(Rc::new(reclass_inner)),
+        );
         params.insert(Key::from("hostname"), Value::String("web-01".to_string()));
 
         inject_classes_and_applications_into_reclass(
@@ -530,7 +535,7 @@ mod tests {
             &["web".to_string()],
         );
 
-        let reclass = params.get(&Key::from("_reclass_")).unwrap();
+        let reclass = params.get(&Key::from("__reclass__")).unwrap();
         if let Value::Hash(h) = reclass {
             let h = Rc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
             assert!(h.contains_key(&Key::from("name")));
@@ -542,7 +547,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_classes_and_applications_no_reclass_key() {
+    fn test_inject_classes_and_applications_creates_key_when_absent() {
         let mut params = LinkedHashMap::new();
         params.insert(Key::from("hostname"), Value::String("web-01".to_string()));
 
@@ -552,6 +557,16 @@ mod tests {
             &["web".to_string()],
         );
 
+        assert!(params.contains_key(&Key::from("__reclass__")));
         assert!(!params.contains_key(&Key::from("_reclass_")));
+
+        let reclass = params.get(&Key::from("__reclass__")).unwrap();
+        if let Value::Hash(h) = reclass {
+            let h = Rc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
+            assert!(h.contains_key(&Key::from("classes")));
+            assert!(h.contains_key(&Key::from("applications")));
+        } else {
+            panic!("expected Hash");
+        }
     }
 }

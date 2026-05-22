@@ -120,34 +120,35 @@ fn inject_salt_reclass_fields(
     applications: &[String],
     environment: &dyn std::fmt::Display,
 ) {
-    let reclass_key = Key::String("_reclass_".to_string());
-    if let Some(Value::Hash(reclass_hash)) = parameters.remove(&reclass_key) {
-        let mut reclass_hash = Rc::try_unwrap(reclass_hash).unwrap_or_else(|rc| (*rc).clone());
-        reclass_hash.insert(
-            Key::String("nodename".to_string()),
-            Value::String(nodename.to_string()),
-        );
-        reclass_hash.insert(
-            Key::String("classes".to_string()),
-            Value::Array(Rc::new(
-                classes.iter().map(|s| Value::String(s.clone())).collect(),
-            )),
-        );
-        reclass_hash.insert(
-            Key::String("applications".to_string()),
-            Value::Array(Rc::new(
-                applications
-                    .iter()
-                    .map(|s| Value::String(s.clone()))
-                    .collect(),
-            )),
-        );
-        reclass_hash.insert(
-            Key::String("environment".to_string()),
-            Value::String(environment.to_string()),
-        );
-        parameters.insert(reclass_key, Value::Hash(Rc::new(reclass_hash)));
-    }
+    let reclass_key = Key::String("__reclass__".to_string());
+    let mut reclass_hash = match parameters.remove(&reclass_key) {
+        Some(Value::Hash(h)) => Rc::try_unwrap(h).unwrap_or_else(|rc| (*rc).clone()),
+        _ => LinkedHashMap::new(),
+    };
+    reclass_hash.insert(
+        Key::String("nodename".to_string()),
+        Value::String(nodename.to_string()),
+    );
+    reclass_hash.insert(
+        Key::String("classes".to_string()),
+        Value::Array(Rc::new(
+            classes.iter().map(|s| Value::String(s.clone())).collect(),
+        )),
+    );
+    reclass_hash.insert(
+        Key::String("applications".to_string()),
+        Value::Array(Rc::new(
+            applications
+                .iter()
+                .map(|s| Value::String(s.clone()))
+                .collect(),
+        )),
+    );
+    reclass_hash.insert(
+        Key::String("environment".to_string()),
+        Value::String(environment.to_string()),
+    );
+    parameters.insert(reclass_key, Value::Hash(Rc::new(reclass_hash)));
 }
 
 /// Build Salt top data from configuration.
@@ -298,7 +299,10 @@ mod tests {
         let mut params = LinkedHashMap::new();
         let mut reclass_inner = LinkedHashMap::new();
         reclass_inner.insert(Key::from("name"), Value::String("test".to_string()));
-        params.insert(Key::from("_reclass_"), Value::Hash(Rc::new(reclass_inner)));
+        params.insert(
+            Key::from("__reclass__"),
+            Value::Hash(Rc::new(reclass_inner)),
+        );
         params.insert(Key::from("hostname"), Value::String("web-01".to_string()));
 
         inject_salt_reclass_fields(
@@ -309,13 +313,14 @@ mod tests {
             &"production",
         );
 
-        let reclass = params.get(&Key::from("_reclass_")).unwrap();
+        let reclass = params.get(&Key::from("__reclass__")).unwrap();
         if let Value::Hash(h) = reclass {
             let h = Rc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
             assert!(h.contains_key(&Key::from("nodename")));
             assert!(h.contains_key(&Key::from("classes")));
             assert!(h.contains_key(&Key::from("applications")));
             assert!(h.contains_key(&Key::from("environment")));
+            assert!(h.contains_key(&Key::from("name")));
 
             let nodename = h.get(&Key::from("nodename")).unwrap();
             assert_eq!(nodename, &Value::String("web-01".to_string()));
@@ -328,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_salt_reclass_fields_no_reclass_key() {
+    fn test_inject_salt_reclass_fields_creates_key_when_absent() {
         let mut params = LinkedHashMap::new();
         params.insert(Key::from("hostname"), Value::String("web-01".to_string()));
 
@@ -340,6 +345,70 @@ mod tests {
             &"base",
         );
 
+        assert!(params.contains_key(&Key::from("__reclass__")));
         assert!(!params.contains_key(&Key::from("_reclass_")));
+
+        let reclass = params.get(&Key::from("__reclass__")).unwrap();
+        if let Value::Hash(h) = reclass {
+            let h = Rc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
+            assert!(h.contains_key(&Key::from("nodename")));
+            assert!(h.contains_key(&Key::from("classes")));
+            assert!(h.contains_key(&Key::from("applications")));
+            assert!(h.contains_key(&Key::from("environment")));
+        } else {
+            panic!("expected Hash");
+        }
+    }
+
+    #[test]
+    fn test_inject_salt_reclass_fields_preserves_automatic_params() {
+        let mut params = LinkedHashMap::new();
+        let mut auto_inner = LinkedHashMap::new();
+        let mut name_map = LinkedHashMap::new();
+        name_map.insert(
+            Key::from("full"),
+            Value::String("web-01.example.com".to_string()),
+        );
+        name_map.insert(Key::from("short"), Value::String("web-01".to_string()));
+        auto_inner.insert(Key::from("name"), Value::Hash(Rc::new(name_map)));
+        auto_inner.insert(Key::from("environment"), Value::String("base".to_string()));
+        params.insert(Key::from("_reclass_"), Value::Hash(Rc::new(auto_inner)));
+
+        inject_salt_reclass_fields(
+            &mut params,
+            "web-01.example.com",
+            &["all".to_string()],
+            &["web".to_string()],
+            &"production",
+        );
+
+        assert!(params.contains_key(&Key::from("_reclass_")));
+        assert!(params.contains_key(&Key::from("__reclass__")));
+
+        let auto_reclass = params.get(&Key::from("_reclass_")).unwrap();
+        if let Value::Hash(h) = auto_reclass {
+            let h = Rc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
+            assert!(h.contains_key(&Key::from("name")));
+            assert!(h.contains_key(&Key::from("environment")));
+            assert!(!h.contains_key(&Key::from("nodename")));
+            assert!(!h.contains_key(&Key::from("classes")));
+        } else {
+            panic!("expected Hash for _reclass_");
+        }
+
+        let adapter_reclass = params.get(&Key::from("__reclass__")).unwrap();
+        if let Value::Hash(h) = adapter_reclass {
+            let h = Rc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
+            assert_eq!(
+                h.get(&Key::from("nodename")),
+                Some(&Value::String("web-01.example.com".to_string()))
+            );
+            assert_eq!(
+                h.get(&Key::from("environment")),
+                Some(&Value::String("production".to_string()))
+            );
+        } else {
+            panic!("expected Hash for __reclass__");
+        }
     }
 }

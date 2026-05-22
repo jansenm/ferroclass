@@ -206,3 +206,88 @@ fn test_salt_pillar_yaml() {
         .expect("YAML formatting failed");
     insta::assert_snapshot!("salt_pillar_yaml", normalize_uris(&yaml));
 }
+
+#[test]
+fn test_salt_top_json() {
+    let config = e2e_options();
+    let top_data = ferroclass::output::salt::build_top(&config).expect("Failed to build salt top");
+
+    let json =
+        format_output(&top_data, OutputFormat::JSON, true, true).expect("JSON formatting failed");
+    insta::assert_snapshot!("salt_top_json", normalize_uris(&json));
+}
+
+#[test]
+fn test_salt_pillar_json() {
+    let config = e2e_options();
+    let pillar_data = ferroclass::output::salt::build_pillar(&config, "web-prod-01")
+        .expect("Failed to build pillar");
+
+    let json = format_output(&pillar_data, OutputFormat::JSON, true, false)
+        .expect("JSON formatting failed");
+    insta::assert_snapshot!("salt_pillar_json", normalize_uris(&json));
+}
+
+// --- Salt python_compat snapshot tests ---
+
+fn python_compat_options() -> Options {
+    let path = python_compat_path();
+    Options {
+        storage_options: StorageOptions {
+            storage_type: StorageType::YamlFs,
+            yaml_fs_options: YamlFsStorageOptions {
+                inventory_base_uri: path.to_string_lossy().to_string(),
+                nodes_uri: "nodes".to_string(),
+                classes_uri: "classes".to_string(),
+                parameter_key_style: ParameterKeyStyle::default(),
+                compose_node_name: false,
+                ..YamlFsStorageOptions::default()
+            },
+            ..StorageOptions::default()
+        },
+        output_options: OutputOptions {
+            output: OutputFormat::JSON,
+            pretty_print: true,
+            output_sorted: false,
+            no_refs: false,
+            group_errors: true,
+        },
+        ..Options::default()
+    }
+}
+
+#[test]
+fn test_salt_python_compat_top_yaml() {
+    let config = python_compat_options();
+    let top_data = ferroclass::output::salt::build_top(&config).expect("Failed to build salt top");
+
+    let yaml =
+        format_output(&top_data, OutputFormat::Yaml, true, true).expect("YAML formatting failed");
+    insta::assert_snapshot!("salt_python_compat_top_yaml", normalize_uris(&yaml));
+}
+
+#[test]
+fn test_salt_python_compat_pillar_yaml() {
+    let config = python_compat_options();
+    let pillar_data =
+        ferroclass::output::salt::build_pillar(&config, "reclass").expect("Failed to build pillar");
+
+    let yaml = format_output(&pillar_data, OutputFormat::Yaml, true, false)
+        .expect("YAML formatting failed");
+    insta::assert_snapshot!("salt_python_compat_pillar_yaml", normalize_uris(&yaml));
+}
+
+// --- Salt error path tests ---
+
+#[test]
+fn test_salt_pillar_node_not_found() {
+    let config = e2e_options();
+    let result = ferroclass::output::salt::build_pillar(&config, "nonexistent-node");
+    assert!(result.is_err(), "Expected error for nonexistent node");
+    let err = result.err().unwrap();
+    let msg = format!("{}", err);
+    assert!(
+        msg.contains("nonexistent-node"),
+        "Error message should mention the node name: {msg}"
+    );
+}

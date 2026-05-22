@@ -1,9 +1,13 @@
 ---
 source: tests/output_snapshot.rs
-assertion_line: 184
-expression: yaml
+expression: normalize_uris(&yaml)
 ---
 ---
+_reclass_:
+  name:
+    full: web-prod-01
+    short: web-prod-01
+  environment: base
 global:
   admin:
     email: admin@example.com
@@ -16,10 +20,7 @@ webserver:
   ssl: true
 hostname: web-prod-01
 ip: 10.0.1.10
-_reclass_:
-  name:
-    full: web-prod-01
-    short: web-prod-01
+__reclass__:
   nodename: web-prod-01
   classes:
     - all

@@ -1,0 +1,66 @@
+---
+source: tests/output_snapshot.rs
+expression: normalize_uris(&yaml)
+---
+---
+_reclass_:
+  name:
+    full: reclass
+    short: reclass
+  environment: base
+lab:
+  name: test
+  label: first
+colour:
+  escaped: "${_param:colour}"
+  doubleescaped: "\\red"
+  unescaped: red
+colours:
+  red:
+    name: red
+  blue:
+    name: blue
+one:
+  a: 1
+  b: 2
+two:
+  c: 3
+  d: 4
+_param:
+  some: param
+  colour: red
+  notfound: exist
+myparam: param
+will:
+  warn:
+    at:
+      second: exist
+  not:
+    fail:
+      at:
+        tree: exist
+1:
+  an_numeric_key: true
+  as_a_dict: 1
+2:
+  - as_a_list
+3: value
+three:
+  e: 5
+  a: 1
+  b: 2
+  c: 3
+  d: 4
+empty:
+  list: []
+  dict: {}
+list_to_override: []
+dict_to_override: {}
+__reclass__:
+  nodename: reclass
+  classes:
+    - first
+    - second
+    - third
+  applications: []
+  environment: base

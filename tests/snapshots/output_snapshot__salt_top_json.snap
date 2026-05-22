@@ -1,0 +1,12 @@
+---
+source: tests/output_snapshot.rs
+expression: normalize_uris(&json)
+---
+{
+  "base": {
+    "app-staging-01": [],
+    "db-prod-01": [],
+    "web-prod-01": [],
+    "web-prod-02": []
+  }
+}

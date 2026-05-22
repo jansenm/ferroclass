@@ -1,0 +1,7 @@
+---
+source: tests/output_snapshot.rs
+expression: normalize_uris(&yaml)
+---
+---
+base:
+  reclass: []
