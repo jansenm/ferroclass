@@ -1,4 +1,4 @@
-<!-- SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz> -->
+<!-- SPDX-FileCopyrightText: 2026 Michael Jansen <ferroclass@michael-jansen.biz> -->
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 
 ---
@@ -51,7 +51,7 @@ The spec file is the **single source of truth** for version numbers.
 | Variable     | Default                         | Purpose                                      |
 |-------------|---------------------------------|----------------------------------------------|
 | `VERSION`   | Read from spec file             | Current package version                       |
-| `GPG_KEY`   | `mike@michael-jansen.biz`       | GPG key ID for signing release tarballs       |
+| `GPG_KEY`   | `ferroclass@michael-jansen.biz`       | GPG key ID for signing release tarballs       |
 | `GH_REPO`   | `jansenm/ferroclass`            | GitHub repository for `gh release create`     |
 | `GH_REMOTE` | `github`                        | Git remote name for GitHub (used by `tag`)    |
 | `OBS_USER`   | Auto-detected from `~/.config/osc/oscrc` | OBS username                      |

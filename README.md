@@ -671,7 +671,7 @@ and architecture guidelines.
 
 This project is licensed under the [Mozilla Public License 2.0](LICENSES/MPL-2.0.txt).
 
-SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
+SPDX-FileCopyrightText: 2026 Michael Jansen <ferroclass@michael-jansen.biz>
 SPDX-License-Identifier: MPL-2.0
 
 [reclass]: https://reclass.pantsfullofunix.net/

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
+# SPDX-FileCopyrightText: 2026 Michael Jansen <ferroclass@michael-jansen.biz>
 # SPDX-License-Identifier: MPL-2.0
 
 Name:           ferroclass
@@ -131,17 +131,17 @@ install -m 0644 man/ferroclass-salt.1 %{buildroot}%{_mandir}/man1/ferroclass-sal
 %{_mandir}/man1/ferroclass-salt.1*
 
 %changelog
-* Wed May 21 2026 Michael Jansen <mike@michael-jansen.biz> - 0.11.0-2
+* Wed May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-2
 - Add %%debug_package for proper binary stripping and debuginfo packages
 - Escape %%license macro in comment to fix rpmlint warning
 
-* Tue May 19 2026 Michael Jansen <mike@michael-jansen.biz> - 0.10.1-1
+* Tue May 19 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.10.1-1
 - Improve error messages by eliminating pass-through error layers
 - Add docs/conventions.md documenting error handling patterns
 
-* Mon May 18 2026 Michael Jansen <mike@michael-jansen.biz> - 0.10.0-1
+* Mon May 18 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.10.0-1
 - Rename binaries to ferroclass/ferroclass-ansible/ferroclass-salt
 - Rename RPM sub-packages to ferroclass-ansible and ferroclass-salt
 
-* Sat May 16 2026 Michael Jansen <mike@michael-jansen.biz> - 0.9.0-1
+* Sat May 16 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.9.0-1
 - Initial package (SUSE Tumbleweed, Rocky Linux 9/10, Fedora)

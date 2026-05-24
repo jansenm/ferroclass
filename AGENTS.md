@@ -19,7 +19,7 @@ and compatibility) and [docs/process.md](docs/process.md) (detailed processing p
 This project is licensed under the **Mozilla Public License 2.0 (MPL-2.0)**.
 
 - **SPDX License Identifier**: `MPL-2.0`
-- **Copyright Holder**: Michael Jansen `<mike@michael-jansen.biz>`
+- **Copyright Holder**: Michael Jansen `<ferroclass@michael-jansen.biz>`
 - **License text**: `LICENSES/MPL-2.0.txt`
 
 ## Documentation Structure
@@ -103,7 +103,7 @@ to make licensing and copyright information machine-readable.
 
 - Every source file (`.rs`, etc.) has an SPDX header at the top:
   ```rust
-  // SPDX-FileCopyrightText: 2025 Michael Jansen <mike@michael-jansen.biz>
+  // SPDX-FileCopyrightText: 2025 Michael Jansen <ferroclass@michael-jansen.biz>
   // SPDX-License-Identifier: MPL-2.0
   ```
 - Cover non-source files (Cargo.toml, snapshots, etc.) with a wildcard

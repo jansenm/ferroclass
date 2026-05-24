@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
+// SPDX-FileCopyrightText: 2026 Michael Jansen <ferroclass@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
 //! Storage backends for reading YAML class and node definitions from disk.

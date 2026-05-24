@@ -1,10 +1,10 @@
 version = 1
 SPDX-PackageName = "ferroclass"
-SPDX-PackageSupplier = "Michael Jansen <mike@michael-jansen.biz>"
+SPDX-PackageSupplier = "Michael Jansen <ferroclass@michael-jansen.biz>"
 SPDX-PackageDownloadLocation = "https://github.com/jansenm/ferroclass"
 
 [[annotations]]
 path = "**"
 precedence = "aggregate"
-SPDX-FileCopyrightText = "2026 Michael Jansen <mike@michael-jansen.biz>"
+SPDX-FileCopyrightText = "2026 Michael Jansen <ferroclass@michael-jansen.biz>"
 SPDX-License-Identifier = "MPL-2.0"

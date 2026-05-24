@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
+# SPDX-FileCopyrightText: 2026 Michael Jansen <ferroclass@michael-jansen.biz>
 # SPDX-License-Identifier: MPL-2.0
 
 [build-system]
@@ -13,7 +13,7 @@ description = "Hierarchical inventory management tool (reclass compatible)"
 readme = "README.md"
 license = "MPL-2.0"
 authors = [
-    {name = "Michael Jansen", email = "mike@michael-jansen.biz"},
+    {name = "Michael Jansen", email = "ferroclass@michael-jansen.biz"},
 ]
 keywords = ["reclass", "inventory", "ansible", "salt", "configuration"]
 classifiers = [
