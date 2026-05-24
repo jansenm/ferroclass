@@ -1,4 +1,13 @@
 -------------------------------------------------------------------
+Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-4
+
+- Disable debug_package to fix conflict between stripped Rust binaries
+  and stripped Python .so extension
+- Move Salt adapters from python3-ferroclass to ferroclass-salt-adapter
+  (noarch); Salt discovers plugins via extension_modules, not Python paths
+- Add contrib/README with Salt adapter installation instructions
+
+-------------------------------------------------------------------
 Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-3
 
 - Add python3-ferroclass subpackage with PyO3 native extension

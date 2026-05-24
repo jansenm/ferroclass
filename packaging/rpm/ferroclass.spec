@@ -3,7 +3,7 @@
 
 Name:           ferroclass
 Version:        0.11.0
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        Hierarchical inventory management tool (reclass compatible)
 
 # Ferroclass is MPL-2.0. Vendored dependencies have their own licenses;
@@ -34,7 +34,10 @@ BuildRequires:  python3-devel
 BuildRequires:  python3-pip
 BuildRequires:  maturin
 
-%debug_package
+# Cargo and maturin release builds produce stripped binaries. Disabling
+# debug_package avoids conflicts between the stripped Rust binaries and
+# the stripped Python .so extension (both would create ferroclass-debuginfo).
+%define debug_package %{nil}
 
 # The ferroclass binary provides the core inventory and node-info
 # functionality. All three binaries (ferroclass, ferroclass-ansible,
@@ -189,12 +192,20 @@ install -m 0644 contrib/README %{buildroot}%{_datadir}/ferroclass/contrib/
 %files -n python3-ferroclass
 %license LICENSES/MPL-2.0.txt
 %{python3_sitearch}/ferroclass/
+%{python3_sitearch}/ferroclass-*.dist-info/
 
 %files -n ferroclass-salt-adapter
 %license LICENSES/MPL-2.0.txt
 %{_datadir}/ferroclass/contrib/
 
 %changelog
+* Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-4
+- Disable debug_package to fix conflict between stripped Rust binaries
+  and stripped Python .so extension (ferroclass-debuginfo already exists)
+- Move Salt adapters from python3-ferroclass to ferroclass-salt-adapter
+  (noarch); Salt discovers plugins via extension_modules, not Python paths
+- Add contrib/README with Salt adapter installation instructions
+
 * Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-3
 - Add python3-ferroclass subpackage with PyO3 native extension
 - Add ferroclass-salt-adapter subpackage (noarch) with Salt adapter
