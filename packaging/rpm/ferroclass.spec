@@ -34,9 +34,13 @@ BuildRequires:  python3-devel
 BuildRequires:  python3-pip
 BuildRequires:  maturin
 
-# Cargo and maturin release builds produce stripped binaries. Disabling
-# debug_package avoids conflicts between the stripped Rust binaries and
-# the stripped Python .so extension (both would create ferroclass-debuginfo).
+# Debug packages are disabled because Cargo's release profile strips
+# DWARF debug info by default (implicit strip = "debuginfo"). The
+# binaries have no .debug_* sections, so find-debuginfo would produce
+# empty packages. Additionally, both the Rust binaries and the maturin
+# .so extension would collide on the same ferroclass-debuginfo package
+# name. To enable proper debuginfo packages, add debug = 2 to the
+# Cargo release profile and split debuginfo into per-binary subpackages.
 %define debug_package %{nil}
 
 # The ferroclass binary provides the core inventory and node-info
