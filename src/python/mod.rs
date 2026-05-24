@@ -55,6 +55,5 @@ fn ferroclass(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(adapter::ext_pillar, m)?)?;
     m.add_function(wrap_pyfunction!(adapter::top, m)?)?;
     m.add_function(wrap_pyfunction!(adapter::load, m)?)?;
-    m.add("ReclassError", m.getattr("ReclassError")?)?;
     Ok(())
 }

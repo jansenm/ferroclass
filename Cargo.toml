@@ -29,6 +29,10 @@ chrono = "0.4.44"
 globset = "0.4"
 regex = "1"
 
+[lib]
+name = "ferroclass"
+crate-type = ["cdylib", "rlib"]
+
 [dev-dependencies]
 insta = { version = "1.42", features = ["yaml"] }
 
