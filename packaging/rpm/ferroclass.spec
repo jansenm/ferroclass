@@ -212,7 +212,7 @@ install -m 0644 contrib/README %{buildroot}%{_datadir}/ferroclass/contrib/
   reference files; users copy/symlink into Salt extension_modules
 - Build Python wheel with maturin during %%build
 
-* Wed May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-2
+* Thu May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-2
 - Add %%debug_package for proper binary stripping and debuginfo packages
 - Escape %%license macro in comment to fix rpmlint warning
 

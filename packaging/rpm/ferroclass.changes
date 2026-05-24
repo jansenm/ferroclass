@@ -16,13 +16,13 @@ Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-3
 - Build Python wheel with maturin during %build
 
 -------------------------------------------------------------------
-Wed May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-2
+Thu May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-2
 
 - Add %debug_package for proper binary stripping and debuginfo packages
 - Escape %license macro in comment to fix rpmlint warning
 
 -------------------------------------------------------------------
-Wed May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-1
+Thu May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-1
 
 - Tighten public API surface: internal modules are now pub(crate)
 - Add crate-root re-exports for commonly used types
