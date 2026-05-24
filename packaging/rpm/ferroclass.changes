@@ -2,7 +2,8 @@
 Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-3
 
 - Add python3-ferroclass subpackage with PyO3 native extension
-- Include Salt adapter modules (contrib/pillar, contrib/tops)
+- Add ferroclass-salt-adapter subpackage (noarch) with Salt adapter
+  reference files; users copy/symlink into Salt extension_modules
 - Build Python wheel with maturin during %build
 
 -------------------------------------------------------------------

@@ -1,0 +1,62 @@
+SPDX-FileCopyrightText: 2026 Michael Jansen <ferroclass@michael-jansen.biz>
+SPDX-License-Identifier: MPL-2.0
+
+Installing Salt Adapter Modules
+===============================
+
+The adapter modules in this directory provide Salt ext_pillar and
+master_tops integration with ferroclass. They are thin Python shims
+that delegate to the native ferroclass extension module (PyO3).
+
+Salt discovers its plugins by scanning the extension_modules directory,
+NOT via Python package paths. You must copy or symlink the adapter
+files into Salt's extension_modules subdirectories.
+
+Quick Install
+-------------
+
+1. Find your Salt extension_modules path:
+
+       grep extension_modules /etc/salt/master
+
+   If not configured, the default is:
+
+       /var/cache/salt/master/extmods
+
+2. Create the pillar and tops subdirectories if they don't exist:
+
+       mkdir -p /var/cache/salt/master/extmods/pillar
+       mkdir -p /var/cache/salt/master/extmods/tops
+
+3. Copy the adapter files:
+
+       cp pillar/ferroclass_adapter.py /var/cache/salt/master/extmods/pillar/
+       cp tops/ferroclass_adapter.py /var/cache/salt/master/extmods/tops/
+
+   Or create symlinks (preferred for package updates):
+
+       ln -s /usr/share/ferroclass/contrib/pillar/ferroclass_adapter.py \
+             /var/cache/salt/master/extmods/pillar/
+       ln -s /usr/share/ferroclass/contrib/tops/ferroclass_adapter.py \
+             /var/cache/salt/master/extmods/tops/
+
+4. Restart the Salt master:
+
+       systemctl restart salt-master
+
+5. Configure ferroclass in /etc/salt/master:
+
+       ext_pillar:
+         - ferroclass:
+             storage_type: yaml_fs
+             inventory_base_uri: /srv/salt
+
+       master_tops:
+         ferroclass:
+           storage_type: yaml_fs
+           inventory_base_uri: /srv/salt
+
+Note: The Salt adapter module name is "ferroclass" (not "reclass").
+If you are migrating from the Python reclass adapter, change your
+Salt master config from "reclass:" to "ferroclass:" and update the
+adapter files as described above.

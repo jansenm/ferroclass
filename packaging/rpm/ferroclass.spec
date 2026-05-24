@@ -88,9 +88,29 @@ Provides the ferroclass Python package with ext_pillar() and top()
 functions for Salt integration, plus load() for direct inventory
 access.
 
-Install this package to use ferroclass as a Salt ext_pillar or
-master_tops plugin. The contrib/ adapter modules for Salt are
-included in this package.
+To use ferroclass as a Salt ext_pillar or master_tops plugin, copy
+the adapter modules from %{_datadir}/ferroclass/contrib/ to Salt's
+extension_modules directory (see %{_datadir}/ferroclass/contrib/README
+for details).
+
+%package -n ferroclass-salt-adapter
+Summary:        Salt adapter modules for ferroclass
+Requires:       python3-ferroclass
+Supplements:    (ferroclass-salt and python3-ferroclass)
+BuildArch:      noarch
+
+%description -n ferroclass-salt-adapter
+Pure-Python Salt adapter modules that delegate to the ferroclass
+native Python extension. Provides ext_pillar (pillar data) and
+master_tops (top data) integration with Salt.
+
+These adapter modules must be installed into Salt's extension_modules
+directory. They are shipped as reference files in
+%{_datadir}/ferroclass/contrib/ — copy or symlink them to the
+pillar/ and tops/ subdirectories of your Salt extension_modules path
+(typically /var/cache/salt/master/extmods/).
+
+See %{_datadir}/ferroclass/contrib/README for installation instructions.
 
 %prep
 %autosetup -p1 -a1
@@ -138,13 +158,14 @@ install -m 0644 man/ferroclass-salt.1 %{buildroot}%{_mandir}/man1/ferroclass-sal
 # Install Python wheel for the python3-ferroclass subpackage.
 pip install --no-deps --root %{buildroot} --prefix %{_prefix} target/wheels/ferroclass-*.whl
 
-# Install Salt adapter modules into the ferroclass Python package directory.
-# These are pure-Python Salt extension modules that delegate to the native
-# ferroclass extension module.
-install -d %{buildroot}%{python3_sitearch}/ferroclass/contrib/pillar
-install -d %{buildroot}%{python3_sitearch}/ferroclass/contrib/tops
-install -m 0644 contrib/pillar/ferroclass_adapter.py %{buildroot}%{python3_sitearch}/ferroclass/contrib/pillar/
-install -m 0644 contrib/tops/ferroclass_adapter.py %{buildroot}%{python3_sitearch}/ferroclass/contrib/tops/
+# Install Salt adapter modules as reference files for the
+# ferroclass-salt-adapter subpackage. Users copy/symlink these
+# into Salt's extension_modules directory.
+install -d %{buildroot}%{_datadir}/ferroclass/contrib/pillar
+install -d %{buildroot}%{_datadir}/ferroclass/contrib/tops
+install -m 0644 contrib/pillar/ferroclass_adapter.py %{buildroot}%{_datadir}/ferroclass/contrib/pillar/
+install -m 0644 contrib/tops/ferroclass_adapter.py %{buildroot}%{_datadir}/ferroclass/contrib/tops/
+install -m 0644 contrib/README %{buildroot}%{_datadir}/ferroclass/contrib/
 
 %files
 %license LICENSES/MPL-2.0.txt
@@ -169,10 +190,15 @@ install -m 0644 contrib/tops/ferroclass_adapter.py %{buildroot}%{python3_sitearc
 %license LICENSES/MPL-2.0.txt
 %{python3_sitearch}/ferroclass/
 
+%files -n ferroclass-salt-adapter
+%license LICENSES/MPL-2.0.txt
+%{_datadir}/ferroclass/contrib/
+
 %changelog
 * Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-3
 - Add python3-ferroclass subpackage with PyO3 native extension
-- Include Salt adapter modules (contrib/pillar, contrib/tops)
+- Add ferroclass-salt-adapter subpackage (noarch) with Salt adapter
+  reference files; users copy/symlink into Salt extension_modules
 - Build Python wheel with maturin during %%build
 
 * Wed May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-2
