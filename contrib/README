@@ -8,9 +8,11 @@ The adapter modules in this directory provide Salt ext_pillar and
 master_tops integration with ferroclass. They are thin Python shims
 that delegate to the native ferroclass extension module (PyO3).
 
-Salt discovers its plugins by scanning the extension_modules directory,
-NOT via Python package paths. You must copy or symlink the adapter
-files into Salt's extension_modules subdirectories.
+Salt discovers its plugins by scanning its extension_modules directory,
+NOT via Python package paths or entry_points. You must copy or symlink
+the adapter files into Salt's extension_modules subdirectories. This
+matches how the Python reclass salt-formulas fork distributes its
+enhanced adapters.
 
 Quick Install
 -------------
@@ -28,17 +30,21 @@ Quick Install
        mkdir -p /var/cache/salt/master/extmods/pillar
        mkdir -p /var/cache/salt/master/extmods/tops
 
-3. Copy the adapter files:
+3. Copy or symlink the adapter files.
 
-       cp pillar/ferroclass_adapter.py /var/cache/salt/master/extmods/pillar/
-       cp tops/ferroclass_adapter.py /var/cache/salt/master/extmods/tops/
-
-   Or create symlinks (preferred for package updates):
+   From an RPM install (ferroclass-salt-adapter package):
 
        ln -s /usr/share/ferroclass/contrib/pillar/ferroclass_adapter.py \
              /var/cache/salt/master/extmods/pillar/
        ln -s /usr/share/ferroclass/contrib/tops/ferroclass_adapter.py \
              /var/cache/salt/master/extmods/tops/
+
+   From a pip install, find the adapter files using Python:
+
+       python3 -c "import ferroclass; print(ferroclass.__file__)"
+
+   Then look for the contrib/ directory next to the extension module,
+   or download the files from the ferroclass source tree on GitHub.
 
 4. Restart the Salt master:
 
@@ -46,17 +52,30 @@ Quick Install
 
 5. Configure ferroclass in /etc/salt/master:
 
+       ferroclass: &ferroclass
+         storage_type: yaml_fs
+         inventory_base_uri: /srv/salt
+
        ext_pillar:
-         - ferroclass:
-             storage_type: yaml_fs
-             inventory_base_uri: /srv/salt
+         - ferroclass: *ferroclass
 
        master_tops:
-         ferroclass:
-           storage_type: yaml_fs
-           inventory_base_uri: /srv/salt
+         ferroclass: *ferroclass
 
-Note: The Salt adapter module name is "ferroclass" (not "reclass").
-If you are migrating from the Python reclass adapter, change your
-Salt master config from "reclass:" to "ferroclass:" and update the
-adapter files as described above.
+   Note the plugin name is "ferroclass" (not "reclass"). If you are
+   migrating from the Python reclass adapter, update the Salt master
+   config from "reclass:" to "ferroclass:".
+
+Background
+----------
+
+Salt still ships built-in reclass_adapter.py files for both ext_pillar
+and master_tops. These built-in adapters import "reclass.adapters.salt"
+and call its ext_pillar() / top() functions. However, they do not
+support the allow_adapter_env_override option (saltenv/pillarenv
+override), which the salt-formulas/reclass fork added.
+
+The ferroclass adapters are similar: they are thin shims that delegate
+to "import ferroclass" and call its ext_pillar() / top() functions.
+Because the module name is "ferroclass" (not "reclass"), they do not
+conflict with Salt's built-in reclass adapters — both can coexist.
