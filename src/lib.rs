@@ -38,6 +38,9 @@ pub mod output;
 pub(crate) mod parser;
 pub mod storage;
 
+#[cfg(feature = "python")]
+pub mod python;
+
 // Re-export the most commonly used types at the crate root for convenience.
 // These are the primary entry points for library consumers.
 pub use inventory::Inventory;

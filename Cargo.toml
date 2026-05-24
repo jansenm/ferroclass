@@ -34,9 +34,16 @@ insta = { version = "1.42", features = ["yaml"] }
 
 [features]
 manpages = ["clap_mangen"]
+python = ["pyo3"]
+default = []
 
 [dependencies.clap_mangen]
 version = "0.2.33"
+optional = true
+
+[dependencies.pyo3]
+version = "0.23"
+features = ["extension-module"]
 optional = true
 
 [[bin]]
