@@ -600,6 +600,101 @@ man ferroclass-ansible
 man ferroclass-salt
 ```
 
+## Salt Integration
+
+Ferroclass can serve as a Salt `ext_pillar` and `master_tops` data source
+through its Python bindings (PyO3 native extension).
+
+### Prerequisites
+
+Install the Python bindings:
+
+```shell
+pip install ferroclass
+```
+
+Or on RPM-based systems:
+
+```shell
+zypper install python3-ferroclass
+```
+
+### Install Adapter Modules
+
+Salt discovers plugins by scanning its `extension_modules` directory (default:
+`/var/cache/salt/master/extmods`). The ferroclass adapter modules must be
+placed there — Salt does not load them from the Python package path.
+
+If you installed the `ferroclass-salt-adapter` RPM package, the adapter files
+are in `/usr/share/ferroclass/contrib/`. Copy or symlink them:
+
+```shell
+# Create the Salt plugin directories if they don't exist
+mkdir -p /var/cache/salt/master/extmods/pillar
+mkdir -p /var/cache/salt/master/extmods/tops
+
+# Symlink (preferred — stays in sync with package updates)
+ln -s /usr/share/ferroclass/contrib/pillar/ferroclass_adapter.py \
+      /var/cache/salt/master/extmods/pillar/
+ln -s /usr/share/ferroclass/contrib/tops/ferroclass_adapter.py \
+      /var/cache/salt/master/extmods/tops/
+
+# Or copy (works if extension_modules is on a different partition)
+cp /usr/share/ferroclass/contrib/pillar/ferroclass_adapter.py \
+   /var/cache/salt/master/extmods/pillar/
+cp /usr/share/ferroclass/contrib/tops/ferroclass_adapter.py \
+   /var/cache/salt/master/extmods/tops/
+```
+
+If you installed via pip, the adapter files are in the `contrib/` directory
+of the source tree. Download them from
+[GitHub](https://github.com/jansenm/ferroclass/tree/main/contrib) or find
+them in your local source checkout.
+
+### Configure the Salt Master
+
+Add ferroclass to `/etc/salt/master`:
+
+```yaml
+ferroclass: &ferroclass
+  storage_type: yaml_fs
+  inventory_base_uri: /srv/salt
+
+ext_pillar:
+  - ferroclass: *ferroclass
+
+master_tops:
+  ferroclass: *ferroclass
+```
+
+Note the plugin name is `ferroclass` (not `reclass`). If you are migrating
+from the Python reclass adapter, update the Salt master config from
+`reclass:` to `ferroclass:`.
+
+Restart the Salt master after configuration changes:
+
+```shell
+systemctl restart salt-master
+```
+
+### Supported Options
+
+| Option                            | Default        | Description                                              |
+|-----------------------------------|----------------|----------------------------------------------------------|
+| `storage_type`                    | `yaml_fs`      | Storage backend type                                     |
+| `inventory_base_uri`              | first file_root| Base directory for the inventory                         |
+| `nodes_uri`                       | `nodes`        | Subdirectory for node definitions                        |
+| `classes_uri`                     | `classes`      | Subdirectory for class definitions                       |
+| `compose_node_name`               | `false`        | Compose node names from directory paths                  |
+| `default_environment`             | `base`         | Default environment for nodes                            |
+| `allow_adapter_env_override`      | `false`        | Allow `saltenv`/`pillarenv` to override node environment |
+| `ignore_class_notfound`           | `false`        | Ignore missing classes instead of raising an error      |
+| `propagate_pillar_data_to_reclass`| `false`        | Pass existing pillar data into ferroclass (not yet impl)|
+
+If `inventory_base_uri` is not specified, it defaults to the first
+`file_roots` entry of the `base` environment (matching the Python
+reclass adapter behavior).
+
 ## Reclass Compatibility
 
 Compatibility with the [salt-formulas/reclass](https://github.com/salt-formulas/reclass)
