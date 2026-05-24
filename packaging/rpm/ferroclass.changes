@@ -1,4 +1,11 @@
 -------------------------------------------------------------------
+Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-3
+
+- Add python3-ferroclass subpackage with PyO3 native extension
+- Include Salt adapter modules (contrib/pillar, contrib/tops)
+- Build Python wheel with maturin during %build
+
+-------------------------------------------------------------------
 Wed May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-2
 
 - Add %debug_package for proper binary stripping and debuginfo packages

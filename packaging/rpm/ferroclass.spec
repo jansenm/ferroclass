@@ -3,7 +3,7 @@
 
 Name:           ferroclass
 Version:        0.11.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Hierarchical inventory management tool (reclass compatible)
 
 # Ferroclass is MPL-2.0. Vendored dependencies have their own licenses;
@@ -28,6 +28,11 @@ BuildRequires:  cargo-rpm-macros
 BuildRequires:  rust-packaging
 BuildRequires:  cargo
 %endif
+
+# Python subpackage build requirements
+BuildRequires:  python3-devel
+BuildRequires:  python3-pip
+BuildRequires:  maturin
 
 %debug_package
 
@@ -72,6 +77,21 @@ with the Python reclass-salt package.
 This package contains only the ferroclass-salt binary. It can be
 installed independently — the main ferroclass package is not required.
 
+%package -n python3-ferroclass
+Summary:        Python bindings for ferroclass (PyO3 native extension)
+Requires:       python3 >= 3.9
+Supplements:    %{name}
+
+%description -n python3-ferroclass
+Native Python extension module for ferroclass, built with PyO3.
+Provides the ferroclass Python package with ext_pillar() and top()
+functions for Salt integration, plus load() for direct inventory
+access.
+
+Install this package to use ferroclass as a Salt ext_pillar or
+master_tops plugin. The contrib/ adapter modules for Salt are
+included in this package.
+
 %prep
 %autosetup -p1 -a1
 %if 0%{?suse_version}
@@ -87,6 +107,10 @@ installed independently — the main ferroclass package is not required.
 %else
 cargo build --release --frozen %{?_smp_mflags}
 %endif
+
+# Build Python wheel for the python3-ferroclass subpackage.
+# Uses the same vendored sources as the Rust binary build.
+maturin build --release --features python --skip-auditwheel --interpreter python3
 
 # Generate vendored dependency manifest for license compliance.
 # Fedora guidelines require cargo-vendor.txt as %%license.
@@ -111,6 +135,17 @@ install -m 0644 man/ferroclass.1 %{buildroot}%{_mandir}/man1/ferroclass.1
 install -m 0644 man/ferroclass-ansible.1 %{buildroot}%{_mandir}/man1/ferroclass-ansible.1
 install -m 0644 man/ferroclass-salt.1 %{buildroot}%{_mandir}/man1/ferroclass-salt.1
 
+# Install Python wheel for the python3-ferroclass subpackage.
+pip install --no-deps --root %{buildroot} --prefix %{_prefix} target/wheels/ferroclass-*.whl
+
+# Install Salt adapter modules into the ferroclass Python package directory.
+# These are pure-Python Salt extension modules that delegate to the native
+# ferroclass extension module.
+install -d %{buildroot}%{python3_sitearch}/ferroclass/contrib/pillar
+install -d %{buildroot}%{python3_sitearch}/ferroclass/contrib/tops
+install -m 0644 contrib/pillar/ferroclass_adapter.py %{buildroot}%{python3_sitearch}/ferroclass/contrib/pillar/
+install -m 0644 contrib/tops/ferroclass_adapter.py %{buildroot}%{python3_sitearch}/ferroclass/contrib/tops/
+
 %files
 %license LICENSES/MPL-2.0.txt
 %if 0%{?cargo_vendor_manifest:1}
@@ -130,7 +165,16 @@ install -m 0644 man/ferroclass-salt.1 %{buildroot}%{_mandir}/man1/ferroclass-sal
 %{_bindir}/ferroclass-salt
 %{_mandir}/man1/ferroclass-salt.1*
 
+%files -n python3-ferroclass
+%license LICENSES/MPL-2.0.txt
+%{python3_sitearch}/ferroclass/
+
 %changelog
+* Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-3
+- Add python3-ferroclass subpackage with PyO3 native extension
+- Include Salt adapter modules (contrib/pillar, contrib/tops)
+- Build Python wheel with maturin during %%build
+
 * Wed May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-2
 - Add %%debug_package for proper binary stripping and debuginfo packages
 - Escape %%license macro in comment to fix rpmlint warning
