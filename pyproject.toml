@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 Michael Jansen <mike@michael-jansen.biz>
+# SPDX-License-Identifier: MPL-2.0
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ferroclass"
+version = "0.11.0"
+requires-python = ">=3.9"
+description = "Hierarchical inventory management tool (reclass compatible)"
+readme = "README.md"
+license = "MPL-2.0"
+authors = [
+    {name = "Michael Jansen", email = "mike@michael-jansen.biz"},
+]
+keywords = ["reclass", "inventory", "ansible", "salt", "configuration"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL-2.0)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+]
+
+[project.urls]
+Homepage = "https://github.com/jansenm/ferroclass"
+Repository = "https://github.com/jansenm/ferroclass"
+Documentation = "https://docs.rs/ferroclass"
+Changelog = "https://github.com/jansenm/ferroclass/blob/main/CHANGELOG.md"
+
+[tool.maturin]
+features = ["python"]
+module-name = "ferroclass"
