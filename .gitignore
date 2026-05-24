@@ -31,6 +31,14 @@ packaging/obs/.osc/
 .git.old/
 
 
+# Python packaging artifacts (maturin/PyO3)
+*.so
+*.pyc
+__pycache__/
+*.egg-info/
+dist/
+build/
+
 # Reference files
 fedora
 wiki
