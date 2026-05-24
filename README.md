@@ -695,6 +695,138 @@ If `inventory_base_uri` is not specified, it defaults to the first
 `file_roots` entry of the `base` environment (matching the Python
 reclass adapter behavior).
 
+## Ansible Integration
+
+Ferroclass provides a dynamic inventory script for Ansible via the
+`ferroclass-ansible` binary. It implements Ansible's
+[dynamic inventory protocol](https://docs.ansible.com/ansible/latest/dev_guide/developing_inventory.html):
+`--list` returns the full inventory as JSON, and `--host HOSTNAME` returns
+host variables for a specific node.
+
+### Usage with Ansible
+
+The simplest integration is a local `ansible.cfg` in your project
+directory. Combine it with a `reclass-config.yml` to tell ferroclass
+where to find the inventory:
+
+```ini
+# ansible.cfg — project-local Ansible configuration
+[defaults]
+inventory = /usr/bin/ferroclass-ansible
+```
+
+```yaml
+# reclass-config.yml — ferroclass inventory configuration
+storage_type: yaml_fs
+inventory_base_uri: /srv/reclass
+```
+
+With this file in place, Ansible automatically uses ferroclass as the
+inventory source — no `-i` flag needed:
+
+```shell
+ansible all --list-hosts
+ansible all -m ping
+ansible-playbook site.yml
+ansible-playbook site.yml --limit webserver
+```
+
+Alternatively, use the `-i` flag for one-off invocations:
+
+```shell
+ansible -i /usr/bin/ferroclass-ansible all --list-hosts
+ansible-playbook -i /usr/bin/ferroclass-ansible site.yml
+```
+
+Note: Ansible's `-i` flag and `inventory =` config setting only accept a
+path to the script — they do not pass additional arguments. Use a
+`reclass-config.yml` to configure the inventory location.
+
+### Inventory Configuration
+
+By default, `ferroclass-ansible` reads inventory from the directory where
+the script is located (useful when symlinked). Specify the inventory
+location explicitly with `--inventory-base-uri`.
+
+Configuration can also be placed in a `reclass-config.yml` file, searched
+in this order: current directory, `$HOME/.config/reclass`, `/etc/reclass`.
+
+```yaml
+# reclass-config.yml
+storage_type: yaml_fs
+inventory_base_uri: /srv/reclass
+```
+
+CLI arguments take precedence over the config file.
+
+### Concept Mapping
+
+Ferroclass and Ansible use different terminology for the same concepts:
+
+| Ferroclass concept | Ansible concept | Notes                                                  |
+|--------------------|-----------------|--------------------------------------------------------|
+| Node               | Host            | Each node becomes a host in the inventory              |
+| Class              | Group           | Each class in a node's ancestry becomes a group        |
+| Application        | Group (with `_hosts` postfix) | e.g. `ssh.server` application → `ssh.server_hosts` group |
+| Parameters         | Host vars       | Node parameters become `_meta.hostvars` entries        |
+
+Classes and applications both become Ansible groups, but with a naming
+convention: applications get a `_hosts` postfix (configurable via
+`--applications-postfix`). This lets you write playbooks that target
+an application group:
+
+```yaml
+- name: SSH server management
+  hosts: ssh.server_hosts
+  tasks:
+    - name: install SSH package
+      ...
+```
+
+### Supported Options
+
+In addition to the common storage and output options:
+
+| Option                  | CLI Flag                    | Default  | Description                                    |
+|-------------------------|-----------------------------|----------|------------------------------------------------|
+| Applications postfix     | `--applications-postfix`    | `_hosts` | Postfix appended to applications to form groups |
+| Output format           | `--output`                  | `json`   | Output format (`json` or `yaml`)               |
+| Pretty-print            | `--pretty-print`            | on       | Indented, human-readable output                |
+| Parameter key style     | `--parameter-key-style`    | `none`   | Validate parameter keys (`none` or `ansible`) |
+
+### Alternative: Symlink as Inventory Script
+
+The Python reclass adapter is traditionally symlinked to `/etc/ansible/hosts`
+so Ansible uses it as the default inventory. You can do the same:
+
+```shell
+# System-wide default inventory
+ln -s /usr/bin/ferroclass-ansible /etc/ansible/hosts
+
+# Or symlink into the inventory directory for auto-detection
+ln -s /usr/bin/ferroclass-ansible /srv/reclass/hosts
+```
+
+This works because `ferroclass-ansible` resolves the symlink and uses the
+target directory as the default `inventory_base_uri` — so it automatically
+finds the `nodes/` and `classes/` subdirectories next to the symlink.
+
+A project-local `ansible.cfg` is generally preferred over a system-wide
+symlink because it keeps the inventory path explicit and versionable.
+
+### Comparison with Python Reclass
+
+The Python `reclass-ansible` adapter and `ferroclass-ansible` produce
+identical output for the same inventory. Both implement the same
+dynamic inventory protocol (`--list` / `--host`). The key differences:
+
+- **Binary vs script**: `ferroclass-ansible` is a compiled binary;
+  `reclass-ansible` is a Python script. Both are invoked the same way.
+- **No YAML anchors**: Ferroclass never emits YAML anchors/aliases. The
+  `--no-refs` flag is accepted but has no effect.
+- **YAML 1.2**: Ferroclass treats `yes`/`no`/`on`/`off` as strings,
+  not booleans (see [Reclass Compatibility](#reclass-compatibility)).
+
 ## Reclass Compatibility
 
 Compatibility with the [salt-formulas/reclass](https://github.com/salt-formulas/reclass)
