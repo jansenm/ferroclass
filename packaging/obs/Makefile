@@ -26,7 +26,8 @@ OSC_ARCH     ?= x86_64
 
 RPM_DIR      := ../rpm
 
-TARGETS      := osc-checkout osc-sync osc-add osc-commit osc-build osc-build-rocky9 osc-build-rocky10 osc-service-run help
+TARGETS      := osc-checkout osc-sync osc-add osc-commit osc-build osc-build-rocky9 \
+				osc-build-rocky10 osc-service-run help %-start %-end
 
 ifndef DEBUG
 .SILENT:
@@ -95,10 +96,10 @@ osc-service-run-do:
 ## --------------------------
 
 %-start:
-	$(info ****** making $*)
+	$(info >>>>>> making $*)
 
 %-end:
-	$(info ****** finished $*)
+	$(info <<<<<< finished $*)
 
 ##
 ## MISCELLANEOUS

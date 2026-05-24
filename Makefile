@@ -26,44 +26,45 @@ GH_REMOTE        ?= github
 
 MANPAGES        := man/ferroclass-ansible.1 man/ferroclass-salt.1 man/ferroclass.1
 
-TARGETS         := all all-do all-end \
-                   build build-do build-end \
-                   build-release build-release-do build-release-end \
-                   test test-do test-end \
-                   check check-do check-end \
-                   doc doc-do doc-end \
-                   docclean docclean-do docclean-end \
-                   install install-do install-end \
-                   install-bin install-bin-do install-bin-end \
-                   install-strip install-strip-do install-strip-end \
-                   install-man install-man-do install-man-end \
-                   uninstall uninstall-do uninstall-end \
-                   dist dist-do dist-end \
-                   checksums checksums-do checksums-end \
-                   sign sign-do sign-end \
-                   tag tag-do tag-end \
-                   release-gh release-gh-do release-gh-end \
-                    release release-do release-end \
-                    publish-crates publish-crates-do publish-crates-end \
-                    bump-version bump-version-do bump-version-end \
-                   osc-sync osc-sync-do osc-sync-end \
-                   packaging packaging-do packaging-end \
-                   setup-reclass setup-reclass-do setup-reclass-end \
-                   commit commit-do commit-end \
-                   test-cov test-cov-do test-cov-end \
-                   test-cov-html test-cov-html-do test-cov-html-end \
-                   format format-do format-end \
-                   clippy clippy-do clippy-end \
-                   check-manpages check-manpages-do check-manpages-end \
-                   clean clean-do clean-end \
-                   mostlyclean mostlyclean-do mostlyclean-end \
-                   distclean distclean-do distclean-end \
-                   maintainer-clean maintainer-clean-do maintainer-clean-end \
-                   help help-do help-end \
-                   vendor vendor-do vendor-end \
-                   Cargo.lock Cargo.lock-do Cargo.lock-end \
+TARGETS         := all all-do \
+                   build build-do \
+                   build-release build-release-do \
+                   test test-do \
+                   check check-do \
+                   doc doc-do \
+                   docclean docclean-do \
+                   install install-do \
+                   install-bin install-bin-do \
+                   install-strip install-strip-do \
+                   install-man install-man-do \
+                   uninstall uninstall-do \
+                   dist dist-do \
+                   checksums checksums-do \
+                   sign sign-do \
+                   tag tag-do \
+                   release-gh release-gh-do \
+                    release release-do \
+                    publish-crates publish-crates-do \
+                    bump-version bump-version-do \
+                   osc-sync osc-sync-do \
+                   packaging packaging-do \
+                   setup-reclass setup-reclass-do \
+                   commit commit-do \
+                   test-cov test-cov-do \
+                   test-cov-html test-cov-html-do \
+                   format format-do \
+                   clippy clippy-do \
+                   check-manpages check-manpages-do \
+                   clean clean-do \
+                   mostlyclean mostlyclean-do \
+                   distclean distclean-do \
+                   maintainer-clean maintainer-clean-do \
+                   help help-do \
+                   vendor vendor-do \
+                   Cargo.lock Cargo.lock-do \
                    manpages-do \
-                   $(MANPAGES)
+                   $(MANPAGES) \
+                   %-start %-end
 
 ifndef DEBUG
 .SILENT:
@@ -104,11 +105,6 @@ check-do:
 doc: doc-start doc-do doc-end
 doc-do:
 	cargo doc --no-deps
-
-## docclean            » remove generated API documentation
-docclean: docclean-start docclean-do docclean-end
-docclean-do:
-	rm -rf target/doc
 
 ## dist                » create source and vendor tarballs
 dist: dist-start vendor dist-do dist-end
@@ -280,38 +276,43 @@ check-manpages-do:
 ## -------
 
 ## clean               » remove build and profile artifacts
-clean: clean-start mostlyclean clean-do clean-end
+clean: clean-start mostlyclean packaging-clean clean-do clean-end
 clean-do:
-	cargo clean
 	rm -f perf.data perf.data.old tarpaulin-report.html
 
 ## mostlyclean         » remove build artifacts
-mostlyclean: mostlyclean-start mostlyclean-do mostlyclean-end
+mostlyclean: mostlyclean-start packaging-mostlyclean mostlyclean-do mostlyclean-end
 mostlyclean-do:
 	cargo clean
 
 ## distclean           » remove everything not part of the release
-distclean: distclean-start clean distclean-do distclean-end
+distclean: distclean-start clean packaging-distclean distclean-do distclean-end
 distclean-do:
-	rm -rf vendor/
-	rm -f $(TARBALL) $(VENDOR_TARBALL)
-	rm -f $(TARBALL_SHA256) $(VENDOR_SHA256)
-	rm -f $(TARBALL_ASC) $(VENDOR_ASC)
 
 ## maintainer-clean    » remove everything that can be generated
-maintainer-clean: maintainer-clean-start distclean maintainer-clean-do maintainer-clean-end
+maintainer-clean: maintainer-clean-start distclean packaging-maintainer-clean maintainer-clean-do maintainer-clean-end
 maintainer-clean-do:
+	rm -rf vendor/
 	rm -f man/*.1 Cargo.lock
+
+## docclean            » remove generated API documentation
+docclean: docclean-start docclean-do docclean-end
+docclean-do:
+	rm -rf target/doc
+
+.PHONY: packaging-%
+packaging-%:
+	make -C packaging/rpm $*
 
 ##
 ## START/DO/END ANNOUNCEMENTS
 ## --------------------------
 
 %-start:
-	$(info ****** making $*)
+	$(info >>>>>> making $*)
 
 %-end:
-	$(info ****** finished $*)
+	$(info <<<<<< finished $*)
 
 ##
 ## MISCELLANEOUS
