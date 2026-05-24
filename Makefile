@@ -23,6 +23,7 @@ VENDOR_ASC      := $(VENDOR_TARBALL).asc
 GPG_KEY          ?= ferroclass@michael-jansen.biz
 GH_REPO          ?= jansenm/ferroclass
 GH_REMOTE        ?= github
+MATURIN          ?= maturin
 
 MANPAGES        := man/ferroclass-ansible.1 man/ferroclass-salt.1 man/ferroclass.1
 
@@ -54,7 +55,11 @@ TARGETS         := all all-do \
                    test-cov-html test-cov-html-do \
                    format format-do \
                    clippy clippy-do \
+                   reuse reuse-do \
                    check-manpages check-manpages-do \
+                   wheel wheel-do \
+                   pip-install pip-install-do \
+                   publish-pypi publish-pypi-do \
                    clean clean-do \
                    mostlyclean mostlyclean-do \
                    distclean distclean-do \
@@ -158,7 +163,7 @@ publish-crates-do:
 	cargo publish --registry crates-io
 
 ## release            » full release: verify, build, package, tag, and publish
-release: release-start commit dist checksums sign tag release-gh publish-crates osc-sync osc-add osc-commit release-end
+release: release-start commit dist checksums sign tag release-gh publish-crates publish-pypi osc-sync osc-add osc-commit release-end
 release-do:
 
 ##
@@ -222,6 +227,24 @@ $(MANPAGES): manpages-start manpages-do manpages-end
 manpages-do:
 	cargo run --bin generate-manpages --features manpages
 
+## wheel               » build Python wheel with maturin
+wheel: wheel-start wheel-do wheel-end
+wheel-do:
+	$(MATURIN) build --release --features python
+	@ls -alF target/wheels/ferroclass-*-cp*-linux_*.whl 2>/dev/null || \
+		ls -alF target/wheels/ferroclass-*.whl 2>/dev/null || \
+		echo "Wheel built. Find it in target/wheels/"
+
+## pip-install          » install ferroclass into the current Python environment
+pip-install: pip-install-start pip-install-do pip-install-end
+pip-install-do:
+	$(MATURIN) develop --features python
+
+## publish-pypi        » publish the wheel to PyPI
+publish-pypi: publish-pypi-start publish-pypi-do publish-pypi-end
+publish-pypi-do:
+	$(MATURIN) publish --no-verify
+
 ## setup-reclass       » clone Python reclass reference into references/reclass/
 setup-reclass: setup-reclass-start setup-reclass-do setup-reclass-end
 setup-reclass-do:
@@ -284,6 +307,7 @@ check-manpages-do:
 clean: clean-start mostlyclean packaging-clean clean-do clean-end
 clean-do:
 	rm -f perf.data perf.data.old tarpaulin-report.html
+	rm -rf target/wheels/
 
 ## mostlyclean         » remove build artifacts
 mostlyclean: mostlyclean-start packaging-mostlyclean mostlyclean-do mostlyclean-end
@@ -299,6 +323,7 @@ maintainer-clean: maintainer-clean-start distclean packaging-maintainer-clean ma
 maintainer-clean-do:
 	rm -rf vendor/
 	rm -f man/*.1 Cargo.lock
+	rm -rf target/wheels/
 
 ## docclean            » remove generated API documentation
 docclean: docclean-start docclean-do docclean-end
@@ -341,6 +366,7 @@ help:
 	@echo "GPG_KEY          = $(GPG_KEY)"
 	@echo "GH_REPO          = $(GH_REPO)"
 	@echo "GH_REMOTE        = $(GH_REMOTE)"
+	@echo "MATURIN           = $(MATURIN)"
 
 ##
 ## VARIABLES
@@ -358,5 +384,6 @@ help:
 ## GPG_KEY              » GPG key ID for signing releases
 ## GH_REPO              » GitHub repository (owner/repo format)
 ## GH_REMOTE            » git remote name for GitHub (default: github)
+## MATURIN              » maturin binary (default: maturin)
 ##
 ## VERBOSE				» print execute commands
