@@ -243,7 +243,7 @@ packaging-do:
 ## ------------
 
 ## commit              » execute commit checks
-commit: commit-start commit-do format test clippy check-manpages commit-end
+commit: commit-start commit-do test clippy format reuse check-manpages commit-end
 commit-do:
 
 ## test-cov            » test coverage report
@@ -265,6 +265,11 @@ format-do:
 clippy: clippy-start clippy-do clippy-end
 clippy-do:
 	cargo clippy
+
+## reuse              » run reuse
+reuse: reuse-start reuse-do reuse-end
+reuse-do:
+	reuse lint
 
 ## check-manpages      » check the manpages for uncommitted changes
 check-manpages: check-manpages-start $(MANPAGES) check-manpages-do check-manpages-end
