@@ -1,4 +1,12 @@
 -------------------------------------------------------------------
+Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-7
+
+- Make cargo-rpm-macros conditional on Fedora/RHEL only; Rocky OBS
+  builds use plain cargo since SUSE macros leak into the build env
+- Add EPEL repository paths for Rocky Linux 9/10 in OBS project config
+- Remove openSUSE:Factory from Rocky OBS repo paths
+
+-------------------------------------------------------------------
 Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-6
 
 - Own /usr/share/ferroclass directory in ferroclass-salt-adapter

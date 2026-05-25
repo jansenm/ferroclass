@@ -3,7 +3,7 @@
 
 Name:           ferroclass
 Version:        0.11.0
-Release:        6%{?dist}
+Release:        7%{?dist}
 Summary:        Hierarchical inventory management tool (reclass compatible)
 
 # Ferroclass is MPL-2.0. Vendored dependencies have their own licenses;
@@ -19,14 +19,19 @@ Source1:        %{name}-%{version}-vendor.tar.gz
 # Enable aarch64 only after sorting snapshot tests with sorted=true.
 ExclusiveArch:  x86_64
 
+# Build requirements differ by distro:
+# - SUSE: cargo-packaging sets up vendored sources automatically
+# - EPEL/Rocky/Fedora: cargo-rpm-macros provides %%cargo_prep etc.
+# - Fallback: plain cargo with manual vendor setup
 %if 0%{?suse_version}
 BuildRequires:  cargo-packaging
 BuildRequires:  cargo
 %else
-# RHEL, Rocky Linux, AlmaLinux, Fedora
+BuildRequires:  cargo
+%if 0%{?fedora} || 0%{?rhel} >= 9
 BuildRequires:  cargo-rpm-macros
 BuildRequires:  rust-packaging
-BuildRequires:  cargo
+%endif
 %endif
 
 # The Python subpackage (python3-ferroclass) requires maturin to build the
@@ -64,6 +69,9 @@ BuildRequires:  maturin
 # functionality. All three binaries (ferroclass, ferroclass-ansible,
 # ferroclass-salt) are built from the same crate and share the same library
 # code, but the adapter binaries are packaged separately so they can be
+# installed independently on systems that only need Ansible or Salt
+# integration.
+
 %description
 Ferroclass is a Rust reimplementation of Python reclass. It provides
 hierarchical inventory management with support for class merging,
@@ -139,9 +147,12 @@ See %{_datadir}/ferroclass/contrib/README for installation instructions.
 %autosetup -p1 -a1
 %if 0%{?suse_version}
 # SUSE: cargo-packaging sets up vendored sources via .cargo/config.toml
-%else
-# RHEL/Fedora: cargo-rpm-macros needs explicit vendor prep
+%elif 0%{?cargo_prep:1}
+# EPEL/Rocky/Fedora: cargo-rpm-macros provides cargo_prep
 %cargo_prep -v vendor
+%else
+# No cargo macros available; vendored sources are already in the tarball.
+# The .cargo/config.toml is in the vendor tarball (Source1).
 %endif
 
 %build
@@ -226,6 +237,12 @@ install -m 0644 contrib/README %{buildroot}%{_datadir}/ferroclass/contrib/
 %endif
 
 %changelog
+* Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-7
+- Make cargo-rpm-macros conditional on Fedora/RHEL only (not Rocky OBS
+  where SUSE macros leak into the build environment)
+- Add EPEL repository paths for Rocky Linux 9/10 in OBS project config
+- Remove openSUSE:Factory from Rocky OBS paths (was leaking SUSE macros)
+
 * Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-6
 - Own /usr/share/ferroclass directory in ferroclass-salt-adapter
   (fixes rpmlint check-files failure on OBS)
