@@ -1,66 +1,19 @@
 -------------------------------------------------------------------
 Tue May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.1-1
 
-- Version bump to 0.11.1: include PyO3 Python bindings and Salt
-  adapter modules in source tarball
-- Fix Rocky Linux OBS builds: add EPEL repos, make cargo-rpm-macros
-  conditional on Fedora/RHEL only, remove SUSE macro leak
-
--------------------------------------------------------------------
-Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-7
-
-- Make cargo-rpm-macros conditional on Fedora/RHEL only; Rocky OBS
-  builds use plain cargo since SUSE macros leak into the build env
-- Add EPEL repository paths for Rocky Linux 9/10 in OBS project config
-- Remove openSUSE:Factory from Rocky OBS repo paths
-
--------------------------------------------------------------------
-Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-6
-
-- Own /usr/share/ferroclass directory in ferroclass-salt-adapter
-  (fixes rpmlint check-files failure on OBS)
-
--------------------------------------------------------------------
-Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-5
-
-- Fix SUSE OBS build: use %%{python_module maturin} and
-  %%{python_module pip} instead of plain BuildRequires names
-  that don't exist in SUSE repos
-- Add python-rpm-macros BuildRequires for SUSE
-
--------------------------------------------------------------------
-Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-4
-
-- Disable debug_package to fix conflict between stripped Rust binaries
-  and stripped Python .so extension
-- Move Salt adapters from python3-ferroclass to ferroclass-salt-adapter
-  (noarch); Salt discovers plugins via extension_modules, not Python paths
-- Add contrib/README with Salt adapter installation instructions
-
--------------------------------------------------------------------
-Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-3
-
-- Add python3-ferroclass subpackage with PyO3 native extension
+- Version bump to 0.11.1
+- Add python3-ferroclass subpackage with PyO3 native extension (SUSE
+  only; maturin not available in Rocky 9 EPEL; opt in with
+  --with python_subpackage)
 - Add ferroclass-salt-adapter subpackage (noarch) with Salt adapter
-  reference files; users copy/symlink into Salt extension_modules
-- Build Python wheel with maturin during %build
-
--------------------------------------------------------------------
-Thu May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-2
-
-- Add %debug_package for proper binary stripping and debuginfo packages
-- Escape %license macro in comment to fix rpmlint warning
-
--------------------------------------------------------------------
-Thu May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-1
-
-- Tighten public API surface: internal modules are now pub(crate)
-- Add crate-root re-exports for commonly used types
-- Add API documentation (module-level and item-level doc comments)
-- Add make doc and make docclean targets
-- Restrict ExclusiveArch to x86_64 only (aarch64 snapshot tests
-  are non-deterministic due to HashMap iteration order)
-- Align spec with openSUSE and Fedora Rust packaging guidelines
+  reference files in /usr/share/ferroclass/contrib/
+- Simplify RPM build: remove cargo-rpm-macros/rust-packaging
+  BuildRequires, remove %%cargo_prep; use plain cargo commands
+- Fix rpmlint python-bytecode-inconsistent-mtime (--no-compile
+  in pip install)
+- Fix rpmlint %%license macro escape in comment
+- Disable debug_package (Cargo strips by default; name collision
+  between Rust binary and Python .so debuginfo)
 
 -------------------------------------------------------------------
 Tue May 19 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.10.1-1
@@ -76,15 +29,6 @@ Mon May 18 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.10.0-1
 - Rename RPM sub-packages to ferroclass-ansible and ferroclass-salt
 
 -------------------------------------------------------------------
-Sun May 17 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.9.0-1
-
-- Add Rocky Linux 9/10 and Fedora build support
-- Add OBS build targets for RockyLinux_9 and RockyLinux_10
-- Add rpm-rocky9 Makefile target for local builds
-
--------------------------------------------------------------------
 Sat May 16 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.9.0-1
 
-- Initial package for SUSE Tumbleweed
-  Provides reclass, reclass-ansible, and reclass-salt binaries
-  as drop-in replacements for the Python reclass implementation
+- Initial package for SUSE Tumbleweed, Rocky Linux 9/10, Fedora

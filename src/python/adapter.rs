@@ -9,6 +9,7 @@
 //! the same output format.
 
 use crate::inventory as inv;
+use crate::inventory::class_mapping::ClassMapping;
 use crate::inventory::options::{Options, StorageOptions, StorageType, YamlFsStorageOptions};
 use crate::python::error;
 use crate::python::inventory::PyInventory;
@@ -58,6 +59,11 @@ fn build_storage_options(
 /// is `False` (the default), `pillarenv` is ignored and the node's
 /// own environment is used.
 ///
+/// The `class_mappings` parameter accepts a list of mapping strings
+/// (e.g. `["* default", "/^www\\d+/ webserver"]`) that auto-include
+/// classes for nodes matching the pattern. Matches Python reclass
+/// `class_mappings` option.
+///
 /// .. note::
 ///
 ///    The `pillar` and `propagate_pillar_data_to_reclass` parameters from
@@ -66,7 +72,9 @@ fn build_storage_options(
 #[pyfunction]
 #[pyo3(signature = (minion_id, pillar=None, pillarenv=None, storage_type="yaml_fs",
                     inventory_base_uri="/etc/reclass", nodes_uri="nodes",
-                    classes_uri="classes", compose_node_name=false,
+                    classes_uri="classes", class_mappings=None,
+                    class_mappings_match_path=false,
+                    compose_node_name=false,
                     default_environment="base",
                     allow_adapter_env_override=false,
                     ignore_class_notfound=false,
@@ -81,6 +89,8 @@ pub fn ext_pillar(
     inventory_base_uri: &str,
     nodes_uri: &str,
     classes_uri: &str,
+    class_mappings: Option<Vec<String>>,
+    class_mappings_match_path: bool,
     compose_node_name: bool,
     default_environment: &str,
     allow_adapter_env_override: bool,
@@ -120,6 +130,12 @@ pub fn ext_pillar(
     let mut inventory = inv::load(&opts.storage_options).map_err(error::to_py_err)?;
     inventory.set_merge_config(merge_config);
 
+    if let Some(raw_mappings) = class_mappings {
+        let mappings = parse_class_mappings(&raw_mappings)?;
+        inventory.set_class_mappings(mappings);
+        inventory.set_class_mappings_match_path(class_mappings_match_path);
+    }
+
     let node = inventory.merge_node(minion_id).map_err(error::to_py_err)?;
 
     let has_inv_query = {
@@ -157,7 +173,9 @@ pub fn ext_pillar(
 #[pyfunction]
 #[pyo3(signature = (minion_id=None, pillarenv=None, storage_type="yaml_fs",
                     inventory_base_uri="/etc/reclass", nodes_uri="nodes",
-                    classes_uri="classes", compose_node_name=false,
+                    classes_uri="classes", class_mappings=None,
+                    class_mappings_match_path=false,
+                    compose_node_name=false,
                     default_environment="base",
                     allow_adapter_env_override=false,
                     ignore_class_notfound=false,
@@ -171,6 +189,8 @@ pub fn top(
     inventory_base_uri: &str,
     nodes_uri: &str,
     classes_uri: &str,
+    class_mappings: Option<Vec<String>>,
+    class_mappings_match_path: bool,
     compose_node_name: bool,
     default_environment: &str,
     allow_adapter_env_override: bool,
@@ -210,6 +230,12 @@ pub fn top(
     let ignore_failed_render = merge_config.inventory_ignore_failed_render;
     let mut inventory = inv::load(&opts.storage_options).map_err(error::to_py_err)?;
     inventory.set_merge_config(merge_config);
+
+    if let Some(raw_mappings) = class_mappings {
+        let mappings = parse_class_mappings(&raw_mappings)?;
+        inventory.set_class_mappings(mappings);
+        inventory.set_class_mappings_match_path(class_mappings_match_path);
+    }
 
     match minion_id {
         Some(mid) => {
@@ -298,14 +324,19 @@ pub fn top(
                     inventory_base_uri="/etc/reclass",
                     nodes_uri="nodes",
                     classes_uri="classes",
+                    class_mappings=None,
+                    class_mappings_match_path=false,
                     compose_node_name=false,
                     default_environment="base",
                     ignore_class_notfound=false))]
+#[allow(clippy::too_many_arguments)]
 pub fn load(
     storage_type: &str,
     inventory_base_uri: &str,
     nodes_uri: &str,
     classes_uri: &str,
+    class_mappings: Option<Vec<String>>,
+    class_mappings_match_path: bool,
     compose_node_name: bool,
     default_environment: &str,
     ignore_class_notfound: bool,
@@ -326,6 +357,26 @@ pub fn load(
         ..Options::default()
     };
 
-    let inventory = inv::load(&opts.storage_options).map_err(error::to_py_err)?;
+    let mut inventory = inv::load(&opts.storage_options).map_err(error::to_py_err)?;
+
+    if let Some(raw_mappings) = class_mappings {
+        let mappings = parse_class_mappings(&raw_mappings)?;
+        inventory.set_class_mappings(mappings);
+        inventory.set_class_mappings_match_path(class_mappings_match_path);
+    }
+
     Ok(PyInventory::new(inventory))
+}
+
+fn parse_class_mappings(raw: &[String]) -> PyResult<Vec<ClassMapping>> {
+    raw.iter()
+        .map(|s| {
+            ClassMapping::parse(s).map_err(|e| {
+                pyo3::exceptions::PyValueError::new_err(format!(
+                    "invalid class_mapping '{}': {e}",
+                    s
+                ))
+            })
+        })
+        .collect()
 }

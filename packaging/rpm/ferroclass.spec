@@ -19,28 +19,26 @@ Source1:        %{name}-%{version}-vendor.tar.gz
 # Enable aarch64 only after sorting snapshot tests with sorted=true.
 ExclusiveArch:  x86_64
 
-# Build requirements differ by distro:
-# - SUSE: cargo-packaging sets up vendored sources automatically
-# - EPEL/Rocky/Fedora: cargo-rpm-macros provides %%cargo_prep etc.
-# - Fallback: plain cargo with manual vendor setup
+# Build requirements: cargo is available in all target distros.
+# SUSE additionally needs cargo-packaging which sets up vendored sources
+# via .cargo/config.toml. On other distros, the vendor tarball (Source1)
+# already contains .cargo/config.toml, so no extra setup is needed.
+# cargo-rpm-macros and rust-packaging are NOT required — the spec uses
+# plain cargo commands as fallbacks when the macros are unavailable.
 %if 0%{?suse_version}
 BuildRequires:  cargo-packaging
 BuildRequires:  cargo
 %else
 BuildRequires:  cargo
-%if 0%{?fedora} || 0%{?rhel} >= 9
-BuildRequires:  cargo-rpm-macros
-BuildRequires:  rust-packaging
-%endif
 %endif
 
 # The Python subpackage (python3-ferroclass) requires maturin to build the
 # PyO3 wheel. On SUSE, maturin is shipped as versioned python3XX-maturin
 # packages — use the %%{python_module} macro which resolves to the correct
-# flavor. On RHEL/Fedora, maturin is available from EPEL/EPEL-next.
-# Define _with_python_subpackage to 1 to enable the Python subpackage build.
-# On SUSE Tumbleweed this is enabled by default; on other distros it requires
-# maturin to be available in the build repository.
+# flavor. On other distros, maturin may not be available in the base repos
+# (e.g. Rocky 9 EPEL does not carry it). Define --with python_subpackage
+# to opt in on platforms where maturin is available; the build will fail
+# with unresolvable BuildRequires if maturin is missing.
 %if 0%{?suse_version}
 %define _with_python_subpackage 1
 BuildRequires:  %{python_module devel}
@@ -145,22 +143,9 @@ See %{_datadir}/ferroclass/contrib/README for installation instructions.
 
 %prep
 %autosetup -p1 -a1
-%if 0%{?suse_version}
-# SUSE: cargo-packaging sets up vendored sources via .cargo/config.toml
-%elif 0%{?cargo_prep:1}
-# EPEL/Rocky/Fedora: cargo-rpm-macros provides cargo_prep
-%cargo_prep -v vendor
-%else
-# No cargo macros available; vendored sources are already in the tarball.
-# The .cargo/config.toml is in the vendor tarball (Source1).
-%endif
 
 %build
-%if 0%{?cargo_build:1}
-%cargo_build
-%else
 cargo build --release --frozen %{?_smp_mflags}
-%endif
 
 %if 0%{?_with_python_subpackage}
 # Build Python wheel for the python3-ferroclass subpackage.
@@ -175,11 +160,7 @@ maturin build --release --features python --skip-auditwheel --interpreter python
 %endif
 
 %check
-%if 0%{?cargo_test:1}
-%cargo_test
-%else
 cargo test --release --frozen
-%endif
 
 %install
 install -d %{buildroot}%{_bindir}
@@ -192,8 +173,10 @@ install -m 0644 man/ferroclass-ansible.1 %{buildroot}%{_mandir}/man1/ferroclass-
 install -m 0644 man/ferroclass-salt.1 %{buildroot}%{_mandir}/man1/ferroclass-salt.1
 
 %if 0%{?_with_python_subpackage}
-# Install Python wheel for the python3-ferroclass subpackage.
-pip install --no-deps --root %{buildroot} --prefix %{_prefix} target/wheels/ferroclass-*.whl
+# pip install: --no-compile prevents stale bytecode timestamps (rpmlint
+# E: python-bytecode-inconsistent-mtime). RPM's brp-python-bytecompile
+# produces consistent .pyc files after all files are in place.
+pip install --no-deps --no-compile --root %{buildroot} --prefix %{_prefix} target/wheels/ferroclass-*.whl
 
 # Install Salt adapter modules as reference files for the
 # ferroclass-salt-adapter subpackage. Users copy/symlink these
@@ -238,52 +221,17 @@ install -m 0644 contrib/README %{buildroot}%{_datadir}/ferroclass/contrib/
 
 %changelog
 * Tue May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.1-1
-- Version bump to 0.11.1: include PyO3 Python bindings and Salt
-  adapter modules in source tarball
-- Make cargo-rpm-macros conditional on Fedora/RHEL only; Rocky OBS
-  builds use plain cargo since openSUSE:Factory macros leak into
-  the Rocky build environment
-- Add EPEL repository paths for Rocky Linux 9/10 in OBS project config
-- Remove openSUSE:Factory from Rocky OBS repo paths
-
-* Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-7
-- Make cargo-rpm-macros conditional on Fedora/RHEL only (not Rocky OBS
-  where SUSE macros leak into the build environment)
-- Add EPEL repository paths for Rocky Linux 9/10 in OBS project config
-- Remove openSUSE:Factory from Rocky OBS repo paths
-- Make cargo-rpm-macros conditional on Fedora/RHEL only (not Rocky OBS
-  where SUSE macros leak into the build environment)
-- Add EPEL repository paths for Rocky Linux 9/10 in OBS project config
-- Remove openSUSE:Factory from Rocky OBS paths (was leaking SUSE macros)
-
-* Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-6
-- Own /usr/share/ferroclass directory in ferroclass-salt-adapter
-  (fixes rpmlint check-files failure on OBS)
-
-* Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-5
-- Fix SUSE OBS build: use %%{python_module maturin} and %%{python_module pip}
-  instead of plain BuildRequires names that don't exist in SUSE repos
-- Add python-rpm-macros BuildRequires for SUSE (provides %%python3_sitearch)
-- Make python3-ferroclass and ferroclass-salt-adapter subpackages conditional
-  on _with_python_subpackage (enabled on SUSE, disabled elsewhere until
-  maturin is available in EPEL/Rocky repos)
-
-* Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-4
-- Disable debug_package to fix conflict between stripped Rust binaries
-  and stripped Python .so extension (ferroclass-debuginfo already exists)
-- Move Salt adapters from python3-ferroclass to ferroclass-salt-adapter
-  (noarch); Salt discovers plugins via extension_modules, not Python paths
-- Add contrib/README with Salt adapter installation instructions
-
-* Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-3
-- Add python3-ferroclass subpackage with PyO3 native extension
+- Version bump to 0.11.1
+- Add python3-ferroclass subpackage with PyO3 native extension (SUSE only;
+  maturin not available in Rocky 9 EPEL; opt in with --with python_subpackage)
 - Add ferroclass-salt-adapter subpackage (noarch) with Salt adapter
-  reference files; users copy/symlink into Salt extension_modules
-- Build Python wheel with maturin during %%build
-
-* Thu May 21 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-2
-- Add %%debug_package for proper binary stripping and debuginfo packages
-- Escape %%license macro in comment to fix rpmlint warning
+  reference files in /usr/share/ferroclass/contrib/
+- Simplify RPM build: remove cargo-rpm-macros/rust-packaging BuildRequires,
+  remove %%cargo_prep; use plain cargo commands everywhere
+- Fix rpmlint python-bytecode-inconsistent-mtime (--no-compile in pip install)
+- Fix rpmlint %%license macro escape in comment
+- Disable debug_package (Cargo strips by default; name collision between
+  Rust binary and Python .so debuginfo)
 
 * Tue May 19 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.10.1-1
 - Improve error messages by eliminating pass-through error layers

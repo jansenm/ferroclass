@@ -48,6 +48,12 @@ Supported options (matching Python reclass adapter):
     Subdirectory for node definitions. Default: ``nodes``.
   classes_uri
     Subdirectory for class definitions. Default: ``classes``.
+  class_mappings
+    List of mapping rules to auto-include classes by node name pattern.
+    Each entry is a string like ``"* default"`` (glob) or
+    ``"/^www\\d+/ webserver"`` (regex). Default: ``None``.
+  class_mappings_match_path
+    Match against node pathname instead of node name. Default: ``false``.
   compose_node_name
     Compose node names from directory paths. Default: ``false``.
   default_environment

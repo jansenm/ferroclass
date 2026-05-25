@@ -19,7 +19,7 @@ master config:
         inventory_base_uri: /srv/salt
 
 See the pillar adapter documentation for a full list of supported
-options.
+options, including ``class_mappings`` and ``class_mappings_match_path``.
 """
 
 __virtualname__ = "ferroclass"
