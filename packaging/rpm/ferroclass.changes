@@ -1,4 +1,18 @@
 -------------------------------------------------------------------
+Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-6
+
+- Own /usr/share/ferroclass directory in ferroclass-salt-adapter
+  (fixes rpmlint check-files failure on OBS)
+
+-------------------------------------------------------------------
+Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-5
+
+- Fix SUSE OBS build: use %%{python_module maturin} and
+  %%{python_module pip} instead of plain BuildRequires names
+  that don't exist in SUSE repos
+- Add python-rpm-macros BuildRequires for SUSE
+
+-------------------------------------------------------------------
 Sun May 24 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-4
 
 - Disable debug_package to fix conflict between stripped Rust binaries
