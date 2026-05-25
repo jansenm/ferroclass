@@ -13,6 +13,10 @@ INSTALL_DATA    ?= $(INSTALL) -m 0644
 
 VERSION         := $(shell sed -n 's/^Version:\s*//p' packaging/rpm/ferroclass.spec)
 NAME            := $(shell sed -n 's/^Name:\s*//p' packaging/rpm/ferroclass.spec)
+RPM_RELEASE    := $(shell sed -n 's/^Release:\s\+\([0-9]\+\).*/\1/p' packaging/rpm/ferroclass.spec)
+SOURCE_TAG      := v$(VERSION)
+RPM_TAG         := rpm/$(VERSION)-$(RPM_RELEASE)
+RELEASE_BRANCH  := release/$(shell echo $(VERSION) | sed 's/\([0-9]\+\)\.\([0-9]\+\)\.[0-9]\+/\1.\2.X/')
 TARBALL_DIR     := packaging/rpm
 TARBALL         := $(TARBALL_DIR)/$(NAME)-$(VERSION).tar.gz
 VENDOR_TARBALL  := $(TARBALL_DIR)/$(NAME)-$(VERSION)-vendor.tar.gz
@@ -44,10 +48,15 @@ TARGETS         := all all-do \
                    sign sign-do \
                    tag tag-do \
                    release-gh release-gh-do \
-                    release release-do \
-                    publish-crates publish-crates-do \
-                    bump-version bump-version-do \
+                   release release-do \
+                   publish-crates publish-crates-do \
+                   bump-version bump-version-do \
+                   release-branch release-branch-do \
+                   rpm-tag rpm-tag-do \
+                   rpm-release rpm-release-do \
                    osc-sync osc-sync-do \
+                   osc-add osc-add-do \
+                   osc-commit osc-commit-do \
                    packaging packaging-do \
                    setup-reclass setup-reclass-do \
                    commit commit-do \
@@ -111,10 +120,11 @@ doc: doc-start doc-do doc-end
 doc-do:
 	cargo doc --no-deps
 
-## dist                » create source and vendor tarballs
+## dist                » create source and vendor tarballs from SOURCE_TAG
 dist: dist-start vendor dist-do dist-end
 dist-do:
-	git -C . archive --format=tar.gz --prefix=$(NAME)-$(VERSION)/ HEAD > $(TARBALL)
+	@git tag -l '$(SOURCE_TAG)' | grep -q '.' || (echo "ERROR: Source tag $(SOURCE_TAG) not found. Run 'make tag' first or set SOURCE_TAG." && exit 1)
+	git -C . archive --format=tar.gz --prefix=$(NAME)-$(VERSION)/ $(SOURCE_TAG) > $(TARBALL)
 	tar czf $(VENDOR_TARBALL) -C . vendor/ .cargo/config.toml
 	@ls -alF $(TARBALL) $(VENDOR_TARBALL)
 
@@ -132,21 +142,21 @@ sign-do:
 	gpg --armor --detach-sign -u $(GPG_KEY) -o $(VENDOR_ASC) $(VENDOR_TARBALL)
 	@ls -alF $(TARBALL_ASC) $(VENDOR_ASC)
 
-## tag                » create and push git tag for current version
+## tag                » create and push source tag for current version
 tag: tag-start tag-do tag-end
 tag-do:
-	git tag -a v$(VERSION) -m "Release v$(VERSION)"
-	git push $(GH_REMOTE) v$(VERSION)
+	git tag -a $(SOURCE_TAG) -m "Release $(SOURCE_TAG)"
+	git push $(GH_REMOTE) $(SOURCE_TAG)
 
 ## release-gh         » create GitHub Release with tarballs and checksums
 release-gh: release-gh-start release-gh-do release-gh-end
 release-gh-do:
 	@CHANGELOG=$$(sed -n '/^## \[$(VERSION)\]/,/^## \[/{/^## \[/!p}' CHANGELOG.md); \
-	gh release create v$(VERSION) \
+	gh release create $(SOURCE_TAG) \
 		$(TARBALL) $(VENDOR_TARBALL) \
 		$(TARBALL_ASC) $(VENDOR_ASC) \
 		$(TARBALL_SHA256) $(VENDOR_SHA256) \
-		--title "v$(VERSION)" \
+		--title "$(SOURCE_TAG)" \
 		--notes "$$CHANGELOG"
 
 ## bump-version       » bump version in spec and Cargo.toml (requires VERSION_NEW=x.y.z)
@@ -162,9 +172,51 @@ publish-crates: publish-crates-start publish-crates-do publish-crates-end
 publish-crates-do:
 	cargo publish --registry crates-io
 
-## release            » full release: verify, build, package, tag, and publish
-release: release-start commit dist checksums sign tag release-gh publish-crates publish-pypi osc-sync osc-add osc-commit release-end
+## release            » full source release: verify, package, tag, and publish
+release: release-start commit dist checksums sign tag release-gh publish-crates publish-pypi release-end
 release-do:
+
+##
+## RELEASE BRANCH WORKFLOW
+## -----------------------
+##
+## Source releases (v0.11.0) and RPM packaging releases (rpm/0.11.0-6) are
+## managed on separate branches to keep main clean for source code development.
+##
+## Workflow:
+##   1. Develop on main, merge to release/X.Y.Z when ready for a source release
+##   2. Run 'make release' on main to create the source tag (v0.11.0) and
+##      publish to GitHub, crates.io, and PyPI
+##   3. Run 'make release-branch' on main to create the release branch
+##      (release/0.11.X) from the source tag
+##   4. Switch to the release branch: git checkout release/0.11.X
+##   5. Make packaging changes (spec, changes file) and commit
+##   6. Run 'make rpm-release' to tag, sign, sync to OBS, and push
+##   7. Repeat steps 5-6 for each RPM Release bump
+##   8. When done, merge packaging changes back to main and delete the branch
+##
+## The source tarball for RPM builds is always archived from the source tag,
+## not HEAD. This ensures every RPM package is traceable to an exact source
+## commit, even when the release branch has packaging-only changes on top.
+
+## release-branch     » create release/X.Y.X branch from SOURCE_TAG and push it
+release-branch: release-branch-start release-branch-do release-branch-end
+release-branch-do:
+	@git tag -l '$(SOURCE_TAG)' | grep -q '.' || (echo "ERROR: Source tag $(SOURCE_TAG) not found. Run 'make tag' first." && exit 1)
+	git branch $(RELEASE_BRANCH) $(SOURCE_TAG) 2>/dev/null || echo "Branch $(RELEASE_BRANCH) already exists"
+	git push $(GH_REMOTE) $(RELEASE_BRANCH)
+	@echo "Created and pushed release branch $(RELEASE_BRANCH) from $(SOURCE_TAG)"
+	@echo "Switch to it with: git checkout $(RELEASE_BRANCH)"
+
+## rpm-tag            » create and push rpm/VERSION-RELEASE tag on current branch
+rpm-tag: rpm-tag-start rpm-tag-do rpm-tag-end
+rpm-tag-do:
+	git tag -a $(RPM_TAG) -m "RPM release $(RPM_TAG)"
+	git push $(GH_REMOTE) $(RPM_TAG)
+
+## rpm-release        » full RPM release: verify, package, tag, sign, and push to OBS
+rpm-release: rpm-release-start dist checksums sign rpm-tag osc-sync osc-add osc-commit rpm-release-end
+rpm-release-do:
 
 ##
 ## INSTALLATION
@@ -255,6 +307,16 @@ setup-reclass-do:
 osc-sync: osc-sync-start osc-sync-do osc-sync-end
 osc-sync-do:
 	$(MAKE) -C packaging/obs osc-sync
+
+## osc-add             » add/remove files in OBS checkout
+osc-add: osc-add-start osc-add-do osc-add-end
+osc-add-do:
+	$(MAKE) -C packaging/obs osc-add
+
+## osc-commit          » commit changes to OBS
+osc-commit: osc-commit-start osc-commit-do osc-commit-end
+osc-commit-do:
+	$(MAKE) -C packaging/obs osc-commit
 
 ## packaging           » build RPM packages (creates tarballs first)
 packaging: packaging-start dist packaging-do packaging-end
@@ -363,10 +425,14 @@ help:
 	@echo "INSTALL_DATA     = $(INSTALL_DATA)"
 	@echo "VERSION          = $(VERSION)"
 	@echo "NAME             = $(NAME)"
+	@echo "RPM_RELEASE      = $(RPM_RELEASE)"
+	@echo "SOURCE_TAG       = $(SOURCE_TAG)"
+	@echo "RPM_TAG          = $(RPM_TAG)"
+	@echo "RELEASE_BRANCH   = $(RELEASE_BRANCH)"
 	@echo "GPG_KEY          = $(GPG_KEY)"
 	@echo "GH_REPO          = $(GH_REPO)"
 	@echo "GH_REMOTE        = $(GH_REMOTE)"
-	@echo "MATURIN           = $(MATURIN)"
+	@echo "MATURIN          = $(MATURIN)"
 
 ##
 ## VARIABLES
@@ -381,6 +447,10 @@ help:
 ## INSTALL_DATA         » install command for data files
 ## VERSION              » package version (from spec file)
 ## NAME                 » package name (from spec file)
+## RPM_RELEASE          » RPM release number (from spec file)
+## SOURCE_TAG           » git source tag (v.VERSION)
+## RPM_TAG              » git RPM release tag (rpm/VERSION-RELEASE)
+## RELEASE_BRANCH       » release branch name (release/MAJOR.MINOR.X)
 ## GPG_KEY              » GPG key ID for signing releases
 ## GH_REPO              » GitHub repository (owner/repo format)
 ## GH_REMOTE            » git remote name for GitHub (default: github)
