@@ -1,4 +1,12 @@
 -------------------------------------------------------------------
+Tue May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.1-1
+
+- Version bump to 0.11.1: include PyO3 Python bindings and Salt
+  adapter modules in source tarball
+- Fix Rocky Linux OBS builds: add EPEL repos, make cargo-rpm-macros
+  conditional on Fedora/RHEL only, remove SUSE macro leak
+
+-------------------------------------------------------------------
 Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-7
 
 - Make cargo-rpm-macros conditional on Fedora/RHEL only; Rocky OBS

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MPL-2.0
 
 Name:           ferroclass
-Version:        0.11.0
-Release:        7%{?dist}
+Version:        0.11.1
+Release:        1%{?dist}
 Summary:        Hierarchical inventory management tool (reclass compatible)
 
 # Ferroclass is MPL-2.0. Vendored dependencies have their own licenses;
@@ -237,7 +237,20 @@ install -m 0644 contrib/README %{buildroot}%{_datadir}/ferroclass/contrib/
 %endif
 
 %changelog
+* Tue May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.1-1
+- Version bump to 0.11.1: include PyO3 Python bindings and Salt
+  adapter modules in source tarball
+- Make cargo-rpm-macros conditional on Fedora/RHEL only; Rocky OBS
+  builds use plain cargo since openSUSE:Factory macros leak into
+  the Rocky build environment
+- Add EPEL repository paths for Rocky Linux 9/10 in OBS project config
+- Remove openSUSE:Factory from Rocky OBS repo paths
+
 * Mon May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.0-7
+- Make cargo-rpm-macros conditional on Fedora/RHEL only (not Rocky OBS
+  where SUSE macros leak into the build environment)
+- Add EPEL repository paths for Rocky Linux 9/10 in OBS project config
+- Remove openSUSE:Factory from Rocky OBS repo paths
 - Make cargo-rpm-macros conditional on Fedora/RHEL only (not Rocky OBS
   where SUSE macros leak into the build environment)
 - Add EPEL repository paths for Rocky Linux 9/10 in OBS project config

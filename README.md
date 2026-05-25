@@ -763,12 +763,12 @@ CLI arguments take precedence over the config file.
 
 Ferroclass and Ansible use different terminology for the same concepts:
 
-| Ferroclass concept | Ansible concept | Notes                                                  |
-|--------------------|-----------------|--------------------------------------------------------|
-| Node               | Host            | Each node becomes a host in the inventory              |
-| Class              | Group           | Each class in a node's ancestry becomes a group        |
+| Ferroclass concept | Ansible concept               | Notes                                                    |
+|--------------------|-------------------------------|----------------------------------------------------------|
+| Node               | Host                          | Each node becomes a host in the inventory                |
+| Class              | Group                         | Each class in a node's ancestry becomes a group          |
 | Application        | Group (with `_hosts` postfix) | e.g. `ssh.server` application → `ssh.server_hosts` group |
-| Parameters         | Host vars       | Node parameters become `_meta.hostvars` entries        |
+| Parameters         | Host vars                     | Node parameters become `_meta.hostvars` entries          |
 
 Classes and applications both become Ansible groups, but with a naming
 convention: applications get a `_hosts` postfix (configurable via
@@ -787,12 +787,12 @@ an application group:
 
 In addition to the common storage and output options:
 
-| Option                  | CLI Flag                    | Default  | Description                                    |
-|-------------------------|-----------------------------|----------|------------------------------------------------|
-| Applications postfix     | `--applications-postfix`    | `_hosts` | Postfix appended to applications to form groups |
-| Output format           | `--output`                  | `json`   | Output format (`json` or `yaml`)               |
-| Pretty-print            | `--pretty-print`            | on       | Indented, human-readable output                |
-| Parameter key style     | `--parameter-key-style`    | `none`   | Validate parameter keys (`none` or `ansible`) |
+| Option               | CLI Flag                 | Default  | Description                                     |
+|----------------------|--------------------------|----------|-------------------------------------------------|
+| Applications postfix | `--applications-postfix` | `_hosts` | Postfix appended to applications to form groups |
+| Output format        | `--output`               | `json`   | Output format (`json` or `yaml`)                |
+| Pretty-print         | `--pretty-print`         | on       | Indented, human-readable output                 |
+| Parameter key style  | `--parameter-key-style`  | `none`   | Validate parameter keys (`none` or `ansible`)   |
 
 ### Alternative: Symlink as Inventory Script
 
