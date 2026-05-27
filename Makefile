@@ -302,7 +302,7 @@ manpages-do:
 wheel: wheel-start wheel-do wheel-end
 wheel-do:
 	$(MATURIN) build --release --features python
-	@ls -alF target/wheels/ferroclass-*-cp*-linux_*.whl 2>/dev/null || \
+	@ls -alF target/wheels/ferroclass-*.whl 2>/dev/null || \
 		ls -alF target/wheels/ferroclass-*.whl 2>/dev/null || \
 		echo "Wheel built. Find it in target/wheels/"
 
@@ -315,7 +315,7 @@ pip-install-do:
 publish-pypi: publish-pypi-start publish-pypi-do publish-pypi-end
 publish-pypi-do:
 	$(MATURIN) build --release --features python
-	twine upload target/wheels/ferroclass-*-cp*-linux_*.whl
+	twine upload target/wheels/ferroclass-*.whl
 
 ## setup-reclass       » clone Python reclass reference into references/reclass/
 setup-reclass: setup-reclass-start setup-reclass-do setup-reclass-end
