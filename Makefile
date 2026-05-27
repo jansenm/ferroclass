@@ -16,7 +16,7 @@ NAME            := $(shell sed -n 's/^Name:\s*//p' packaging/rpm/ferroclass.spec
 RPM_RELEASE    := $(shell sed -n 's/^Release:\s\+\([0-9]\+\).*/\1/p' packaging/rpm/ferroclass.spec)
 SOURCE_TAG      := v$(VERSION)
 RPM_TAG         := rpm/$(VERSION)-$(RPM_RELEASE)
-RELEASE_BRANCH  := release/$(shell echo $(VERSION) | sed 's/\([0-9]\+\)\.\([0-9]\+\)\.[0-9]\+/\1.\2.X/')
+RELEASE_BRANCH  := release/$(VERSION)
 TARBALL_DIR     := packaging/rpm
 TARBALL         := $(TARBALL_DIR)/$(NAME)-$(VERSION).tar.gz
 VENDOR_TARBALL  := $(TARBALL_DIR)/$(NAME)-$(VERSION)-vendor.tar.gz
@@ -135,7 +135,7 @@ dist-do:
 	VENDOR_STAGING=$$(mktemp -d) && \
 		mkdir -p "$$VENDOR_STAGING/.cargo" && \
 		{ cat .cargo/config.toml; echo ""; cat .cargo/config.vendor.toml; } > "$$VENDOR_STAGING/.cargo/config.toml" && \
-		tar czf $(VENDOR_TARBALL) -C "$$VENDOR_STAGING" .cargo/config.toml -C . vendor/ && \
+		tar czf $(VENDOR_TARBALL) -C "$$VENDOR_STAGING" .cargo/config.toml -C "$(CURDIR)" vendor/ && \
 		rm -rf "$$VENDOR_STAGING"
 	@ls -alF $(TARBALL) $(VENDOR_TARBALL)
 
@@ -192,26 +192,30 @@ release-do:
 ## RELEASE BRANCH WORKFLOW
 ## -----------------------
 ##
-## Source releases (v0.11.0) and RPM packaging releases (rpm/0.11.0-6) are
+## Source releases (v0.12.0) and RPM packaging releases (rpm/0.12.0-1) are
 ## managed on separate branches to keep main clean for source code development.
 ##
 ## Workflow:
-##   1. Develop on main, merge to release/X.Y.Z when ready for a source release
-##   2. Run 'make release' on main to create the source tag (v0.11.0) and
-##      publish to GitHub, crates.io, and PyPI
+##   1. Develop on main, bump version, update changelogs, run quality gates
+##   2. Run 'make tag' on main to create and push the source tag (v0.12.0)
 ##   3. Run 'make release-branch' on main to create the release branch
-##      (release/0.11.X) from the source tag
-##   4. Switch to the release branch: git checkout release/0.11.X
-##   5. Make packaging changes (spec, changes file) and commit
+##      (release/0.12.0) from the source tag
+##   4. Any changes needed after the source tag (Makefile fixes, spec tweaks,
+##      changelog updates) are committed on the release branch, NOT on main
+##   5. Run 'make dist' on the release branch to create tarballs
+##      (source tarball is from the tag; vendor tarball uses the working tree)
 ##   6. Run 'make rpm-release' to tag, sign, sync to OBS, and push
-##   7. Repeat steps 5-6 for each RPM Release bump
+##   7. Repeat steps 4-6 for each RPM Release bump (rpm/0.12.0-2, etc.)
 ##   8. When done, merge packaging changes back to main and delete the branch
 ##
 ## The source tarball for RPM builds is always archived from the source tag,
 ## not HEAD. This ensures every RPM package is traceable to an exact source
 ## commit, even when the release branch has packaging-only changes on top.
+##
+## Branch naming: release/X.Y.Z (exact version). This allows distinct branches
+## for patch releases (release/0.12.0 vs release/0.12.1) if needed.
 
-## release-branch     » create release/X.Y.X branch from SOURCE_TAG and push it
+## release-branch     » create release/X.Y.Z branch from SOURCE_TAG and push it
 release-branch: release-branch-start release-branch-do release-branch-end
 release-branch-do:
 	@git tag -l '$(SOURCE_TAG)' | grep -q '.' || (echo "ERROR: Source tag $(SOURCE_TAG) not found. Run 'make tag' first." && exit 1)
@@ -219,6 +223,7 @@ release-branch-do:
 	git push $(GH_REMOTE) $(RELEASE_BRANCH)
 	@echo "Created and pushed release branch $(RELEASE_BRANCH) from $(SOURCE_TAG)"
 	@echo "Switch to it with: git checkout $(RELEASE_BRANCH)"
+	@echo "Cherry-pick any post-tag fixes with: git cherry-pick <commit>"
 
 ## rpm-tag            » create and push rpm/VERSION-RELEASE tag on current branch
 rpm-tag: rpm-tag-start rpm-tag-do rpm-tag-end
@@ -465,7 +470,7 @@ help:
 ## RPM_RELEASE          » RPM release number (from spec file)
 ## SOURCE_TAG           » git source tag (v.VERSION)
 ## RPM_TAG              » git RPM release tag (rpm/VERSION-RELEASE)
-## RELEASE_BRANCH       » release branch name (release/MAJOR.MINOR.X)
+## RELEASE_BRANCH       » release branch name (release/VERSION)
 ## GPG_KEY              » GPG key ID for signing releases
 ## GH_REPO              » GitHub repository (owner/repo format)
 ## GH_REMOTE            » git remote name for GitHub (default: github)
