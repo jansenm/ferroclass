@@ -35,6 +35,7 @@ TARGETS         := all all-do \
                    build build-do \
                    build-release build-release-do \
                    test test-do \
+                   test-vendor test-vendor-do \
                    check check-do \
                    doc doc-do \
                    docclean docclean-do \
@@ -97,7 +98,7 @@ all: all-start all-do build all-end
 all-do:
 
 ## build               » build the crate (debug)
-build: build-start vendor $(MANPAGES) build-do build-end
+build: build-start $(MANPAGES) build-do build-end
 build-do:
 	cargo build
 
@@ -110,6 +111,12 @@ build-release-do:
 test: test-start build test-do test-end
 test-do:
 	cargo test
+
+## test-vendor         » run the tests with vendored dependencies
+test-vendor: test-vendor-start vendor test-vendor-do test-vendor-end
+test-vendor-do:
+	cargo build --frozen --config .cargo/config.vendor.toml
+	cargo test --release --frozen --config .cargo/config.vendor.toml
 
 ## check               » run the tests (GNU standard alias)
 check: check-start check-do test check-end
@@ -125,7 +132,11 @@ dist: dist-start vendor dist-do dist-end
 dist-do:
 	@git tag -l '$(SOURCE_TAG)' | grep -q '.' || (echo "ERROR: Source tag $(SOURCE_TAG) not found. Run 'make tag' first or set SOURCE_TAG." && exit 1)
 	git -C . archive --format=tar.gz --prefix=$(NAME)-$(VERSION)/ $(SOURCE_TAG) > $(TARBALL)
-	tar czf $(VENDOR_TARBALL) -C . vendor/ .cargo/config.toml
+	VENDOR_STAGING=$$(mktemp -d) && \
+		mkdir -p "$$VENDOR_STAGING/.cargo" && \
+		{ cat .cargo/config.toml; echo ""; cat .cargo/config.vendor.toml; } > "$$VENDOR_STAGING/.cargo/config.toml" && \
+		tar czf $(VENDOR_TARBALL) -C "$$VENDOR_STAGING" .cargo/config.toml -C . vendor/ && \
+		rm -rf "$$VENDOR_STAGING"
 	@ls -alF $(TARBALL) $(VENDOR_TARBALL)
 
 ## checksums          » generate SHA256 checksums for tarballs
@@ -159,12 +170,13 @@ release-gh-do:
 		--title "$(SOURCE_TAG)" \
 		--notes "$$CHANGELOG"
 
-## bump-version       » bump version in spec and Cargo.toml (requires VERSION_NEW=x.y.z)
+## bump-version       » bump version in spec, Cargo.toml, and pyproject.toml (requires VERSION_NEW=x.y.z)
 bump-version: bump-version-start bump-version-do bump-version-end
 bump-version-do:
 	@test -n "$(VERSION_NEW)" || (echo "Usage: make bump-version VERSION_NEW=x.y.z" && exit 1)
 	sed -i 's/^Version:.*/Version:        $(VERSION_NEW)/' packaging/rpm/ferroclass.spec
 	perl -i -pe 'BEGIN { $$n=0; } $$n++ < 1 && s/^version = ".*"/version = "$(VERSION_NEW)"/g' Cargo.toml
+	sed -i 's/^version = ".*"/version = "$(VERSION_NEW)"/' pyproject.toml
 	@echo "Version bumped to $(VERSION_NEW). Update CHANGELOG.md before releasing."
 
 ## publish-crates     » publish the crate to crates.io
@@ -173,7 +185,7 @@ publish-crates-do:
 	cargo publish --registry crates-io
 
 ## release            » full source release: verify, package, tag, and publish
-release: release-start commit dist checksums sign tag release-gh publish-crates publish-pypi release-end
+release: release-start commit tag dist checksums sign release-gh publish-crates publish-pypi release-end
 release-do:
 
 ##
@@ -215,7 +227,7 @@ rpm-tag-do:
 	git push $(GH_REMOTE) $(RPM_TAG)
 
 ## rpm-release        » full RPM release: verify, package, tag, sign, and push to OBS
-rpm-release: rpm-release-start dist checksums sign rpm-tag osc-sync osc-add osc-commit rpm-release-end
+rpm-release: rpm-release-start rpm-tag dist checksums sign osc-sync osc-add osc-commit rpm-release-end
 rpm-release-do:
 
 ##
@@ -273,6 +285,8 @@ Cargo.lock-do:
 vendor: vendor-start vendor-do vendor-end
 vendor-do:
 	cargo vendor
+	cargo vendor > .cargo/config.vendor.toml
+	@echo "Vendored dependencies saved. Use 'make test-vendor' to build with vendored sources."
 
 ## manpages            » build the manpages
 $(MANPAGES): manpages-start manpages-do manpages-end
@@ -384,6 +398,7 @@ distclean-do:
 maintainer-clean: maintainer-clean-start distclean packaging-maintainer-clean maintainer-clean-do maintainer-clean-end
 maintainer-clean-do:
 	rm -rf vendor/
+	rm -f .cargo/config.vendor.toml
 	rm -f man/*.1 Cargo.lock
 	rm -rf target/wheels/
 

@@ -1,4 +1,17 @@
 -------------------------------------------------------------------
+Tue May 27 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.12.0-1
+
+- Version bump to 0.12.0
+- Redesign vendored sources configuration: committed .cargo/config.toml
+  no longer forces vendored sources; vendor builds use --config flag
+  or merged config in vendor tarball
+- Fix Makefile release target ordering: tag is created before dist
+- Fix Makefile rpm-release target ordering: rpm-tag before dist
+- Add class_mappings and class_mappings_match_path to PyO3 API
+  (ext_pillar, top, load functions)
+- Add make test-vendor target for offline vendored build verification
+
+-------------------------------------------------------------------
 Tue May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.1-1
 
 - Version bump to 0.11.1

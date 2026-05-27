@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 Name:           ferroclass
-Version:        0.11.1
+Version:        0.12.0
 Release:        1%{?dist}
 Summary:        Hierarchical inventory management tool (reclass compatible)
 
@@ -220,6 +220,15 @@ install -m 0644 contrib/README %{buildroot}%{_datadir}/ferroclass/contrib/
 %endif
 
 %changelog
+* Wed May 27 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.12.0-1
+- Redesign vendored sources configuration: committed .cargo/config.toml
+  no longer forces vendored sources; vendor builds use --config flag
+  or merged config in vendor tarball
+- Fix Makefile release target ordering (tag before dist)
+- Fix Makefile rpm-release target ordering (rpm-tag before dist)
+- Add class_mappings and class_mappings_match_path to PyO3 API
+- Add make test-vendor target for offline vendored build verification
+
 * Tue May 26 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.11.1-1
 - Version bump to 0.11.1
 - Add python3-ferroclass subpackage with PyO3 native extension (SUSE only;

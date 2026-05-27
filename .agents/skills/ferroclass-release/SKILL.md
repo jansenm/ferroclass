@@ -3,29 +3,35 @@
 
 ---
 name: ferroclass-release
-description: Release process for ferroclass. Use when preparing a new version, building release artifacts, creating GitHub Releases, or syncing to OBS. Covers version bumping, tarball creation, checksums, GPG signing, tagging, and publication.
+description: Release process for ferroclass. Use when preparing a new version, building release artifacts, creating GitHub Releases, or syncing to OBS. Covers version bumping, tarball creation, checksums, GPG signing, tagging, publication, and RPM release branch workflow.
 ---
 
 # Ferroclass Release Process
 
 ## Overview
 
-Ferroclass uses a **hybrid release strategy**:
+Ferroclass uses a **hybrid release strategy** with **separate branches** for source
+and RPM packaging:
 
-- **GitHub Releases** host source tarballs, vendor tarballs, SHA256 checksums,
-  and GPG signatures.
-- **Open Build Service (OBS)** builds and distributes binary RPM packages for
-  openSUSE Tumbleweed, Rocky Linux 9, and Rocky Linux 10.
+- **`main` branch** — Source code development. Source releases (`vX.Y.Z` tags)
+  are created here.
+- **`release/X.Y.X` branches** — RPM packaging. Created from the source tag;
+  contain spec/changes tweaks. RPM tags (`rpm/X.Y.Z-N`) are created here.
+
+**GitHub Releases** host source tarballs, vendor tarballs, SHA256 checksums,
+and GPG signatures. **Open Build Service (OBS)** builds and distributes binary
+RPM packages for openSUSE Tumbleweed and Rocky Linux 9.
 
 No GitHub Actions CI/CD is used. The entire release process is manual via
 Makefile targets, giving full control over what gets published.
 
-The version is defined in **two** places that must stay in sync:
+The version is defined in **three** places that must stay in sync:
 
 | File                            | What to Change    |
 |---------------------------------|-------------------|
 | `Cargo.toml`                    | `version = "X.Y.Z"` |
 | `packaging/rpm/ferroclass.spec` | `Version: X.Y.Z`    |
+| `pyproject.toml`                | `version = "X.Y.Z"` |
 
 The Makefile reads the version from the spec file via
 `$(shell sed -n 's/^Version:\s*//p' packaging/rpm/ferroclass.spec)`.
@@ -35,16 +41,41 @@ The spec file is the **single source of truth** for version numbers.
 
 ## Make Targets for Releases
 
+### Source Release (on `main` branch)
+
 | Target           | Purpose                                                    |
 |------------------|------------------------------------------------------------|
-| `bump-version`   | Update version in spec file and Cargo.toml (VERSION_NEW=) |
+| `bump-version`   | Update version in spec file, Cargo.toml, and pyproject.toml |
 | `dist`           | Create source and vendor tarballs in `packaging/rpm/`        |
 | `checksums`      | Generate `.sha256` checksums for tarballs (depends on `dist`) |
 | `sign`           | Sign tarballs with GPG (requires `GPG_KEY`, depends on `dist`) |
 | `tag`            | Create and push git tag `vX.Y.Z`                            |
 | `release-gh`     | Create GitHub Release with artifacts and changelog           |
-| `release`        | Full pipeline: commit → dist → checksums → tag → release-gh → osc-sync |
-| `osc-sync`       | Sync spec/changes/_service to OBS checkout                   |
+| `publish-crates` | Publish the crate to crates.io                              |
+| `publish-pypi`   | Publish the Python wheel to PyPI                            |
+| `release`        | Full pipeline: commit → tag → dist → checksums → sign → release-gh → publish-crates → publish-pypi |
+| `release-branch` | Create `release/X.Y.X` branch from source tag              |
+
+### RPM Release (on `release/X.Y.X` branch)
+
+| Target           | Purpose                                                    |
+|------------------|------------------------------------------------------------|
+| `rpm-tag`        | Create and push `rpm/X.Y.Z-N` tag on current branch        |
+| `rpm-release`    | Full RPM pipeline: rpm-tag → dist → checksums → sign → osc-sync → osc-add → osc-commit |
+| `osc-sync`       | Sync spec/changes to OBS checkout                           |
+| `osc-add`        | Add/remove files in OBS checkout                            |
+| `osc-commit`     | Commit changes to OBS                                       |
+
+### Development & Testing
+
+| Target           | Purpose                                                    |
+|------------------|------------------------------------------------------------|
+| `vendor`         | Vendor dependencies + save `.cargo/config.vendor.toml`      |
+| `test-vendor`    | Build and test with vendored deps (no network access)      |
+| `build`          | Build using crates.io (no vendor step needed)              |
+| `test`           | Run tests using crates.io                                  |
+| `commit`         | Quality gates: test, clippy, format, reuse, check-manpages  |
+| `wheel`          | Build Python wheel with maturin                            |
 
 ### Key Variables
 
@@ -54,13 +85,31 @@ The spec file is the **single source of truth** for version numbers.
 | `GPG_KEY`   | `ferroclass@michael-jansen.biz`       | GPG key ID for signing release tarballs       |
 | `GH_REPO`   | `jansenm/ferroclass`            | GitHub repository for `gh release create`     |
 | `GH_REMOTE` | `github`                        | Git remote name for GitHub (used by `tag`)    |
+| `MATURIN`   | `maturin`                       | maturin binary for Python wheel builds        |
 | `OBS_USER`   | Auto-detected from `~/.config/osc/oscrc` | OBS username                      |
 | `OBS_PROJECT`| `home:$(OBS_USER):ferroclass`  | OBS project name                              |
-| `OSC_REPO`  | `openSUSE_Tumbleweed`           | OBS build repository                          |
-| `OSC_ARCH`  | `x86_64`                        | OBS build architecture                         |
 
 Override any variable on the command line:
 `make release GPG_KEY=0x12345678 GH_REPO=other/repo`
+
+---
+
+## Vendored Sources Architecture
+
+The `.cargo/config.toml` committed in the repo contains **only build flags**
+(`[build] rustflags`), not the vendored-sources replacement. This allows
+`cargo build`, `cargo test`, and `cargo publish` to work with crates.io
+directly without a vendor step.
+
+For RPM builds and offline builds:
+
+1. `make vendor` — runs `cargo vendor` to create `vendor/` and saves the
+   source replacement config to `.cargo/config.vendor.toml` (gitignored).
+2. `make test-vendor` — builds and tests with `cargo --config .cargo/config.vendor.toml`.
+3. `make dist` — creates the **vendor tarball** with a merged `.cargo/config.toml`
+   that contains both the build flags (from committed config) and the vendored
+   source replacement (from `config.vendor.toml`). The RPM `%autosetup -p1 -a1`
+   overlays this complete config on top of the source tarball.
 
 ---
 
@@ -72,7 +121,7 @@ Override any variable on the command line:
 make bump-version VERSION_NEW=X.Y.Z
 ```
 
-This updates `packaging/rpm/ferroclass.spec` and `Cargo.toml`.
+This updates `packaging/rpm/ferroclass.spec`, `Cargo.toml`, and `pyproject.toml`.
 
 ### 2. Update CHANGELOG.md
 
@@ -90,52 +139,96 @@ Day Mon DD YYYY Author <email> - X.Y.Z-1
 - Summary of changes
 ```
 
-### 4. Regenerate man pages
+### 4. Update the spec %changelog
+
+Add a matching entry to the `%changelog` section of `packaging/rpm/ferroclass.spec`.
+
+### 5. Regenerate man pages
 
 ```shell
 make manpages
 ```
 
-### 5. Run quality gates
+### 6. Run quality gates
 
 ```shell
 make commit
 ```
 
-This runs `cargo fmt`, `cargo test`, `cargo clippy`, and `check-manpages`.
+This runs `cargo test`, `cargo clippy`, `cargo fmt`, `reuse lint`, and `check-manpages`.
 
-### 6. Create the release
+### 7. Create the source release
 
 ```shell
 make release
 ```
 
-This runs the full pipeline:
+This runs the full pipeline (on `main` branch):
 1. `commit` — quality gates
-2. `dist` — create source and vendor tarballs
-3. `checksums` — generate SHA256 checksums
-4. `tag` — create and push git tag `vX.Y.Z`
-5. `release-gh` — create GitHub Release with artifacts and changelog from CHANGELOG.md
-6. `osc-sync` — sync packaging files to OBS checkout
+2. `tag` — create and push git tag `vX.Y.Z`
+3. `dist` — create source and vendor tarballs (from the tag)
+4. `checksums` — generate SHA256 checksums
+5. `sign` — GPG-sign the tarballs
+6. `release-gh` — create GitHub Release with artifacts and changelog
+7. `publish-crates` — publish to crates.io
+8. `publish-pypi` — publish Python wheel to PyPI
 
-### 7. Sync to OBS and build
+### 8. Create the release branch
+
+```shell
+make release-branch
+```
+
+This creates `release/X.Y.X` from the source tag and pushes it.
+
+### 9. Switch to the release branch and publish RPMs
+
+```shell
+git checkout release/X.Y.X
+make rpm-release
+```
+
+This runs the full RPM pipeline (on `release/X.Y.X` branch):
+1. `rpm-tag` — create and push `rpm/X.Y.Z-1` tag
+2. `dist` — create source and vendor tarballs (from the source tag, not HEAD)
+3. `checksums` — generate SHA256 checksums
+4. `sign` — GPG-sign the tarballs
+5. `osc-sync` — sync files to OBS checkout
+6. `osc-add` — add/remove files in OBS
+7. `osc-commit` — commit to OBS
+
+### 10. Build on OBS
 
 ```shell
 cd ~/obs/home:mjansen1972:ferroclass/ferroclass
-osc addremove
-osc commit
 make -C packaging/obs osc-build OBS_PROJECT=home:mjansen1972:ferroclass
-make -C packaging/obs osc-build-rocky9 OBS_PROJECT=home:mjansen1972:ferroclass
-make -C packaging/obs osc-build-rocky10 OBS_PROJECT=home:mjansen1972:ferroclass
 ```
 
-### 8. GPG sign (when key is available)
+For Rocky 9 (local builds need `--no-verify` because Rocky GPG keys may not be
+in the host rpmdb):
 
 ```shell
-make sign GPG_KEY=<key-id>
-gh release upload vX.Y.Z \
-    packaging/rpm/ferroclass-X.Y.Z.tar.gz.asc \
-    packaging/rpm/ferroclass-X.Y.Z-vendor.tar.gz.asc
+make -C packaging/obs osc-build-rocky9 OBS_PROJECT=home:mjansen1972:ferroclass
+```
+
+### 11. RPM Release bumps (if needed)
+
+If the spec needs changes after the initial RPM release:
+
+1. Edit spec/changes on the `release/X.Y.X` branch
+2. Bump `Release:` in the spec (e.g., `1` → `2`)
+3. Add changelog entries
+4. Commit
+5. `make rpm-release` (creates `rpm/X.Y.Z-N` tag)
+
+### 12. Merge packaging changes back to main
+
+When done with the release branch:
+
+```shell
+git checkout main
+git merge release/X.Y.X
+git branch -d release/X.Y.X
 ```
 
 ---
@@ -150,7 +243,17 @@ gh release upload vX.Y.Z \
 | `ferroclass-X.Y.Z-vendor.tar.gz.sha256`           | GitHub Releases  | SHA256 checksum               |
 | `ferroclass-X.Y.Z.tar.gz.asc`                     | GitHub Releases  | GPG signature                 |
 | `ferroclass-X.Y.Z-vendor.tar.gz.asc`              | GitHub Releases  | GPG signature                 |
-| Binary RPMs for openSUSE, Rocky 9/10               | OBS repositories | Distro package installation   |
+| Binary RPMs for openSUSE, Rocky 9                  | OBS repositories | Distro package installation   |
+| Python wheel `ferroclass-X.Y.Z-cp3XX-linux_x86_64.whl` | PyPI         | Python package installation  |
+
+---
+
+## Tag Formats
+
+| Tag Format          | Created By      | Branch          | Purpose                        |
+|---------------------|-----------------|-----------------|--------------------------------|
+| `vX.Y.Z`            | `make tag`      | `main`          | Source release                  |
+| `rpm/X.Y.Z-N`       | `make rpm-tag`  | `release/X.Y.X` | RPM packaging release           |
 
 ---
 
@@ -185,7 +288,7 @@ Release. This minimizes the supply chain attack surface.
 
 - **Semantic versioning**: `X.Y.Z` where:
   - `X` = major (breaking ABI changes, incompatible config formats)
-  - `Y` = minor (new features, new adapters, new CLI flags)
+  - `Y` = minor (new features, new adapters, new CLI flags, new Python API)
   - `Z` = patch (bug fixes, doc fixes, dependency updates)
 - **Pre-release tags**: `1.0.0-alpha.1`, `1.0.0-beta.2` — append to Cargo.toml
   version but NOT to the spec `Version:` (RPM spec does not support pre-release
@@ -197,9 +300,8 @@ Release. This minimizes the supply chain attack surface.
 
 ## What to NOT Do
 
-1. **Do NOT bump version in only one file.** If Cargo.toml and the spec differ,
-   `make dist` creates a tarball with the spec version but Cargo builds a binary
-   with a different version.
+1. **Do NOT bump version in only one file.** If Cargo.toml, pyproject.toml, and
+   the spec differ, the release will be inconsistent.
 2. **Do NOT skip `make commit` before tagging.** The tag represents the exact
    commit that passed all quality gates.
 3. **Do NOT forget to regenerate man pages.** The `man/*.1` files embed the
@@ -210,6 +312,11 @@ Release. This minimizes the supply chain attack surface.
    entries are required for RPM builds and audit trails.
 6. **Do NOT use GitHub Actions to build release artifacts.** The release process
    is manual by design to minimize supply chain attack surface.
+7. **Do NOT create RPM tags on `main`.** RPM tags (`rpm/X.Y.Z-N`) belong on
+   `release/X.Y.X` branches only.
+8. **Do NOT modify committed files during builds.** The `.cargo/config.toml`
+   in the repo must not be overwritten. Vendor builds use `--config` or the
+   vendor tarball's merged config.
 
 ---
 
@@ -220,11 +327,10 @@ repositories:
 
 | Repository            | Path                     | Architectures  |
 |-----------------------|--------------------------|----------------|
-| openSUSE_Tumbleweed  | openSUSE:Factory/standard | x86_64, aarch64 |
-| RockyLinux_9          | RockyLinux:9/standard     | x86_64, aarch64 |
-| RockyLinux_10         | RockyLinux:10/standard    | x86_64, aarch64 |
+| openSUSE_Tumbleweed  | openSUSE:Factory/standard | x86_64        |
+| RockyLinux_9          | RockyLinux:9/standard     | x86_64        |
 
-The OBS Makefile auto-detects your OBS username from `~/.config/osc/oscrc`.
+aarch64 is disabled until snapshot test determinism is fixed.
 
 ---
 
@@ -252,7 +358,8 @@ Run this to catch version inconsistencies before committing:
 # Version consistency check
 TOML_V=$(grep '^version' Cargo.toml | sed 's/.*"//;s/".*//')
 SPEC_V=$(grep '^Version' packaging/rpm/ferroclass.spec | awk '{print $2}')
-[ "$TOML_V" = "$SPEC_V" ] && echo "OK: v$TOML_V" || echo "MISMATCH: Cargo=$TOML_V Spec=$SPEC_V"
+PY_V=$(grep '^version' pyproject.toml | head -1 | sed 's/.*= * "//;s/".*//')
+[ "$TOML_V" = "$SPEC_V" ] && [ "$TOML_V" = "$PY_V" ] && echo "OK: v$TOML_V" || echo "MISMATCH: Cargo=$TOML_V Spec=$SPEC_V Py=$PY_V"
 
 # Quality gates
 make commit
@@ -262,4 +369,7 @@ make dist
 
 # Verify tarball contents
 tar tzf packaging/rpm/ferroclass-$SPEC_V.tar.gz | head
+
+# Verify vendor tarball contains merged config
+tar tzf packaging/rpm/ferroclass-$SPEC_V-vendor.tar.gz | head
 ```
