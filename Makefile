@@ -311,10 +311,11 @@ pip-install: pip-install-start pip-install-do pip-install-end
 pip-install-do:
 	$(MATURIN) develop --features python
 
-## publish-pypi        » publish the wheel to PyPI
+## publish-pypi        » publish the wheel to PyPI (requires twine)
 publish-pypi: publish-pypi-start publish-pypi-do publish-pypi-end
 publish-pypi-do:
-	$(MATURIN) publish --no-verify
+	$(MATURIN) build --release --features python
+	twine upload target/wheels/ferroclass-*-cp*-linux_*.whl
 
 ## setup-reclass       » clone Python reclass reference into references/reclass/
 setup-reclass: setup-reclass-start setup-reclass-do setup-reclass-end
