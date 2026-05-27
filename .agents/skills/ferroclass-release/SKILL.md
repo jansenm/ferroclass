@@ -3,7 +3,7 @@
 
 ---
 name: ferroclass-release
-description: Release process for ferroclass. Use when preparing a new version, building release artifacts, creating GitHub Releases, or syncing to OBS. Covers version bumping, tarball creation, checksums, GPG signing, tagging, publication, and RPM release branch workflow.
+description: Release process for ferroclass. Use when preparing a new version, building release artifacts, creating GitHub Releases, or syncing to OBS. Covers version bumping, tarball creation, checksums, GPG signing, tagging, publication, and RPM release branch workflow including post-tag change handling.
 ---
 
 # Ferroclass Release Process
@@ -15,8 +15,13 @@ and RPM packaging:
 
 - **`main` branch** — Source code development. Source releases (`vX.Y.Z` tags)
   are created here.
-- **`release/X.Y.X` branches** — RPM packaging. Created from the source tag;
-  contain spec/changes tweaks. RPM tags (`rpm/X.Y.Z-N`) are created here.
+- **`release/X.Y.Z` branches** — RPM packaging. Created from the source tag;
+  contain spec/changes tweaks, Makefile fixes, and any other post-tag changes.
+  RPM tags (`rpm/X.Y.Z-N`) are created here.
+
+Branch naming uses the **exact version** (`release/0.12.0`, not `release/0.12.X`)
+so that patch releases get distinct branches (`release/0.12.0` vs
+`release/0.12.1`).
 
 **GitHub Releases** host source tarballs, vendor tarballs, SHA256 checksums,
 and GPG signatures. **Open Build Service (OBS)** builds and distributes binary
@@ -39,6 +44,23 @@ The spec file is the **single source of truth** for version numbers.
 
 ---
 
+## The Immutability Rule
+
+**Once a source tag (`vX.Y.Z`) is pushed, it is immutable.** Never delete and
+re-push a source tag. If a bug is discovered after pushing the tag:
+
+1. The bug fix goes on the **release branch** (`release/X.Y.Z`), not `main`.
+2. The source tarball in the GitHub Release is rebuilt from the tag
+   (source code is correct; only packaging/tooling needed fixing).
+3. The vendor tarball is rebuilt using the fixed working tree on the release
+   branch.
+4. The RPM tag (`rpm/X.Y.Z-N`) captures the exact packaging state.
+
+This ensures the `vX.Y.Z` tag always points to the same commit, giving a
+stable reference for the source tarball and enabling traceability.
+
+---
+
 ## Make Targets for Releases
 
 ### Source Release (on `main` branch)
@@ -54,9 +76,9 @@ The spec file is the **single source of truth** for version numbers.
 | `publish-crates` | Publish the crate to crates.io                              |
 | `publish-pypi`   | Publish the Python wheel to PyPI                            |
 | `release`        | Full pipeline: commit → tag → dist → checksums → sign → release-gh → publish-crates → publish-pypi |
-| `release-branch` | Create `release/X.Y.X` branch from source tag              |
+| `release-branch` | Create `release/X.Y.Z` branch from source tag              |
 
-### RPM Release (on `release/X.Y.X` branch)
+### RPM Release (on `release/X.Y.Z` branch)
 
 | Target           | Purpose                                                    |
 |------------------|------------------------------------------------------------|
@@ -115,7 +137,9 @@ For RPM builds and offline builds:
 
 ## Release Checklist
 
-### 1. Bump version
+### Phase 1: Source Release (on `main`)
+
+#### 1. Bump version
 
 ```shell
 make bump-version VERSION_NEW=X.Y.Z
@@ -123,12 +147,12 @@ make bump-version VERSION_NEW=X.Y.Z
 
 This updates `packaging/rpm/ferroclass.spec`, `Cargo.toml`, and `pyproject.toml`.
 
-### 2. Update CHANGELOG.md
+#### 2. Update CHANGELOG.md
 
 Add a new section `[X.Y.Z] - YYYY-MM-DD` following the Keep a Changelog format.
 This is manual — the changelog must be written by a human.
 
-### 3. Update the SUSE changelog
+#### 3. Update the SUSE changelog
 
 Add a new entry to `packaging/rpm/ferroclass.changes`:
 
@@ -139,17 +163,17 @@ Day Mon DD YYYY Author <email> - X.Y.Z-1
 - Summary of changes
 ```
 
-### 4. Update the spec %changelog
+#### 4. Update the spec %changelog
 
 Add a matching entry to the `%changelog` section of `packaging/rpm/ferroclass.spec`.
 
-### 5. Regenerate man pages
+#### 5. Regenerate man pages
 
 ```shell
 make manpages
 ```
 
-### 6. Run quality gates
+#### 6. Run quality gates
 
 ```shell
 make commit
@@ -157,47 +181,104 @@ make commit
 
 This runs `cargo test`, `cargo clippy`, `cargo fmt`, `reuse lint`, and `check-manpages`.
 
-### 7. Create the source release
+#### 7. Commit and push
 
 ```shell
-make release
+git add -A
+git commit -m "Release vX.Y.Z"
+git push github main
 ```
 
-This runs the full pipeline (on `main` branch):
-1. `commit` — quality gates
-2. `tag` — create and push git tag `vX.Y.Z`
-3. `dist` — create source and vendor tarballs (from the tag)
-4. `checksums` — generate SHA256 checksums
-5. `sign` — GPG-sign the tarballs
-6. `release-gh` — create GitHub Release with artifacts and changelog
-7. `publish-crates` — publish to crates.io
-8. `publish-pypi` — publish Python wheel to PyPI
+#### 8. Create and push the source tag
 
-### 8. Create the release branch
+```shell
+make tag
+```
+
+This creates and pushes `vX.Y.Z`.
+
+#### 9. Create the release branch
 
 ```shell
 make release-branch
 ```
 
-This creates `release/X.Y.X` from the source tag and pushes it.
+This creates `release/X.Y.Z` from the source tag and pushes it.
 
-### 9. Switch to the release branch and publish RPMs
+**STOP HERE if `make dist` fails or a bug is discovered.** The source tag is
+immutable. Any fixes go on the release branch — see Phase 2.
+
+#### 10. Create tarballs
 
 ```shell
-git checkout release/X.Y.X
+make dist
+```
+
+This creates source and vendor tarballs. The source tarball is archived from
+the tag; the vendor tarball uses the working tree.
+
+#### 11. Generate checksums and sign
+
+```shell
+make checksums
+make sign
+```
+
+#### 12. Create GitHub Release
+
+```shell
+make release-gh
+```
+
+#### 13. Publish to crates.io and PyPI
+
+```shell
+make publish-crates
+make publish-pypi
+```
+
+### Phase 2: RPM Release (on `release/X.Y.Z` branch)
+
+#### 1. Switch to the release branch
+
+```shell
+git checkout release/X.Y.Z
+```
+
+#### 2. Cherry-pick any post-tag fixes from main
+
+If bugs were discovered after pushing the source tag (e.g., `make dist` failed,
+Makefile had a bug, spec needed a tweak), the fix was committed on `main` and
+needs to be cherry-picked onto the release branch:
+
+```shell
+git cherry-pick <commit-hash>
+```
+
+Alternatively, make the fix directly on the release branch if it wasn't needed
+on `main`.
+
+**Important:** All changes after the source tag belong on the release branch,
+not on `main`. The only exception is if the bug also affects `main` (e.g., a
+Makefile bug that would break future releases too) — in that case, fix on
+`main` first, then cherry-pick to the release branch.
+
+#### 3. Run the RPM release
+
+```shell
 make rpm-release
 ```
 
-This runs the full RPM pipeline (on `release/X.Y.X` branch):
+This runs the full RPM pipeline:
 1. `rpm-tag` — create and push `rpm/X.Y.Z-1` tag
-2. `dist` — create source and vendor tarballs (from the source tag, not HEAD)
+2. `dist` — create source and vendor tarballs (source from the tag, vendor from working tree)
 3. `checksums` — generate SHA256 checksums
 4. `sign` — GPG-sign the tarballs
 5. `osc-sync` — sync files to OBS checkout
 6. `osc-add` — add/remove files in OBS
 7. `osc-commit` — commit to OBS
 
-### 10. Build on OBS
+#### 4. Build on OBS
 
 ```shell
 cd ~/obs/home:mjansen1972:ferroclass/ferroclass
@@ -211,24 +292,73 @@ in the host rpmdb):
 make -C packaging/obs osc-build-rocky9 OBS_PROJECT=home:mjansen1972:ferroclass
 ```
 
-### 11. RPM Release bumps (if needed)
+#### 5. RPM Release bumps (if needed)
 
 If the spec needs changes after the initial RPM release:
 
-1. Edit spec/changes on the `release/X.Y.X` branch
+1. Edit spec/changes on the `release/X.Y.Z` branch
 2. Bump `Release:` in the spec (e.g., `1` → `2`)
 3. Add changelog entries
 4. Commit
 5. `make rpm-release` (creates `rpm/X.Y.Z-N` tag)
 
-### 12. Merge packaging changes back to main
+#### 6. Merge packaging changes back to main
 
 When done with the release branch:
 
 ```shell
 git checkout main
-git merge release/X.Y.X
-git branch -d release/X.Y.X
+git merge release/X.Y.Z
+git push github main
+git branch -d release/X.Y.Z
+git push github --delete release/X.Y.Z   # optional: delete remote branch
+```
+
+---
+
+## Post-Tag Change Workflow
+
+This is the critical workflow for handling bugs discovered **after the source
+tag has been pushed** but **before the RPM build succeeds**.
+
+### The Problem
+
+You pushed `vX.Y.Z`, then discovered:
+- `make dist` fails (e.g., Makefile bug)
+- The vendor tarball is wrong
+- The spec has a typo
+- A dependency needs patching
+
+You cannot move the source tag (immutability rule). But the RPM build needs
+the fix.
+
+### The Solution
+
+```
+1. Fix the bug on main (if it affects main too) and commit.
+2. Create release/X.Y.Z from the tag:  make release-branch
+3. Switch to release branch:           git checkout release/X.Y.Z
+4. Cherry-pick the fix:                git cherry-pick <hash>
+5. Rebuild tarballs:                   make dist
+6. Continue with RPM release:           make rpm-release
+```
+
+The source tarball (`git archive vX.Y.Z`) is from the immutable tag — the
+source code is correct. The vendor tarball is rebuilt using the fixed working
+tree on the release branch. The RPM tag (`rpm/X.Y.Z-1`) captures the exact
+packaging state including all fixes.
+
+### Example: 0.12.0 Release
+
+```
+1. Committed "Release v0.12.0" → aa7015c
+2. Pushed tag v0.12.0 → points to aa7015c (IMMUTABLE)
+3. make dist → FAILED (Makefile used '.' instead of $(CURDIR) for tar -C)
+4. Fixed Makefile on main → eed7672
+5. Created release/0.12.0 from v0.12.0
+6. Cherry-picked eed7672 onto release/0.12.0
+7. make dist → SUCCESS (vendor tarball now correct)
+8. Continued with make rpm-release
 ```
 
 ---
@@ -250,10 +380,20 @@ git branch -d release/X.Y.X
 
 ## Tag Formats
 
-| Tag Format          | Created By      | Branch          | Purpose                        |
-|---------------------|-----------------|-----------------|--------------------------------|
-| `vX.Y.Z`            | `make tag`      | `main`          | Source release                  |
-| `rpm/X.Y.Z-N`       | `make rpm-tag`  | `release/X.Y.X` | RPM packaging release           |
+| Tag Format          | Created By      | Branch            | Purpose                        |
+|---------------------|-----------------|-------------------|--------------------------------|
+| `vX.Y.Z`            | `make tag`      | `main`            | Source release (IMMUTABLE)     |
+| `rpm/X.Y.Z-N`       | `make rpm-tag`  | `release/X.Y.Z`   | RPM packaging release          |
+
+---
+
+## Branch Formats
+
+| Branch Format       | Created By          | Parent           | Purpose                            |
+|---------------------|---------------------|------------------|------------------------------------|
+| `release/X.Y.Z`     | `make release-branch` | `vX.Y.Z` tag   | RPM packaging and post-tag fixes   |
+
+Patch releases get distinct branches: `release/0.12.0`, `release/0.12.1`, etc.
 
 ---
 
@@ -313,10 +453,16 @@ Release. This minimizes the supply chain attack surface.
 6. **Do NOT use GitHub Actions to build release artifacts.** The release process
    is manual by design to minimize supply chain attack surface.
 7. **Do NOT create RPM tags on `main`.** RPM tags (`rpm/X.Y.Z-N`) belong on
-   `release/X.Y.X` branches only.
+   `release/X.Y.Z` branches only.
 8. **Do NOT modify committed files during builds.** The `.cargo/config.toml`
    in the repo must not be overwritten. Vendor builds use `--config` or the
    vendor tarball's merged config.
+9. **Do NOT delete and re-push a source tag.** Source tags are immutable.
+   If a bug is found after tagging, fix it on the release branch.
+10. **Do NOT make post-tag changes on `main` for packaging-only issues.**
+    Changes that only affect RPM packaging (spec, Makefile dist target, vendor
+    config) belong on the release branch. Only fix on `main` if the bug also
+    affects non-packaging workflows (e.g., `make build` would also break).
 
 ---
 
@@ -372,4 +518,7 @@ tar tzf packaging/rpm/ferroclass-$SPEC_V.tar.gz | head
 
 # Verify vendor tarball contains merged config
 tar tzf packaging/rpm/ferroclass-$SPEC_V-vendor.tar.gz | head
+
+# Verify the merged config in the vendor tarball
+tar xzf packaging/rpm/ferroclass-$SPEC_V-vendor.tar.gz -O .cargo/config.toml
 ```
