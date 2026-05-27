@@ -139,6 +139,19 @@ For RPM builds and offline builds:
 
 ### Phase 1: Source Release (on `main`)
 
+#### 0. Clean working tree
+
+Before starting any release work, remove all build artifacts to ensure
+a pristine state:
+
+```shell
+make maintainer-clean
+```
+
+This guarantees that `make dist` produces tarballs from a clean tree,
+and that no stale artifacts (vendor cache, old wheels, etc.) leak into
+the release.
+
 #### 1. Bump version
 
 ```shell
@@ -302,17 +315,29 @@ If the spec needs changes after the initial RPM release:
 4. Commit
 5. `make rpm-release` (creates `rpm/X.Y.Z-N` tag)
 
-#### 6. Merge packaging changes back to main
+#### 6. Merge release branch back to main (squash merge)
 
-When done with the release branch:
+**Do not merge the release branch back to main until all release work is
+finished** — PyPI upload, crates.io publish, OBS builds verified, and any
+post-tag fixes are complete. Once merged, the release branch has served its
+purpose.
+
+Use a **squash merge** so main gets a single clean commit, not the full
+history of every packaging fix and typo correction from the release branch:
 
 ```shell
 git checkout main
-git merge release/X.Y.Z
+git merge --squash release/X.Y.Z
+git commit -m "Merge release/X.Y.Z: collect post-tag fixes"
 git push github main
 git branch -d release/X.Y.Z
 git push github --delete release/X.Y.Z   # optional: delete remote branch
 ```
+
+A regular merge would flood main's history with cherry-picked packaging
+tweaks that don't belong there. The squash merge keeps main's history
+linear and readable. If you need a record of what was on the release
+branch, the `rpm/X.Y.Z-N` tags still point to those exact commits.
 
 ---
 
@@ -463,6 +488,13 @@ Release. This minimizes the supply chain attack surface.
     Changes that only affect RPM packaging (spec, Makefile dist target, vendor
     config) belong on the release branch. Only fix on `main` if the bug also
     affects non-packaging workflows (e.g., `make build` would also break).
+11. **Do NOT skip `make maintainer-clean` before a release.** Stale build
+    artifacts (vendor cache, old wheels) can leak into tarballs or cause
+    confusing test results. Always start from a clean tree.
+12. **Do NOT merge the release branch back to main prematurely.** Wait until
+    all release work is done (PyPI, crates.io, OBS builds verified). And always
+    use a squash merge — a regular merge defeats the purpose of having a
+    separate release branch.
 
 ---
 
