@@ -144,6 +144,13 @@ Low-risk changes that unblock everything else:
 - Decouple adapters from loading: add `_from(inventory, opts)` variants
 - Unify error types: single `ferroclass::Error` at crate root
 - Separate `Options` into library and CLI concerns
+- Add `Diagnostic` and `DiagnosticSeverity` types (Error/Warning/Info/Hint)
+- Add `SourceLocation { file, line, col }` to `Class` and `Node` during parsing
+- Change `load()` return type to collect per-file/per-node errors instead of
+  aborting on first error: `Result<DiagnosticReport, FatalError>` where
+  `DiagnosticReport { diagnostics: Vec<Diagnostic>, inventory: Option<Inventory> }`
+- Change `merge_node()` to return `MergeResult` with diagnostics alongside
+  the merged node, so missing classes produce warnings instead of aborting
 
 ### Phase 1: Thread safety
 

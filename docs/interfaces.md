@@ -39,6 +39,196 @@ All three interfaces share these needs:
 | Thread-safe inventory handle          | `Rc<Value>` is `!Send + !Sync`           | Switch to `Arc<Value>`         |
 | Progress reporting during load        | No callback or event system              | Tracing spans or callback hook |
 | Unified error handling                | Fragmented error types                   | Single `ferroclass::Error`     |
+| Error collection (not abort on first) | Every layer aborts on first error         | Collect-and-continue patterns  |
+| Warnings and informational messages   | Only `tracing::warn!` logs; no structured | Diagnostic severity levels     |
+
+## Diagnostics and Error Collection
+
+All three interfaces need to report problems to the user. Currently,
+ferroclass aborts on the first error at virtually every level: file
+loading, class resolution, merging, and interpolation. This is the right
+behavior for a CLI tool that produces one output, but wrong for an
+interactive system that should show *all* problems at once.
+
+### Current Behavior: Abort on First Error
+
+The entire pipeline uses `?` propagation — one error anywhere aborts
+everything:
+
+- **File loading**: First invalid YAML file → abort. Other files are
+  never loaded.
+- **Class resolution**: Missing class → abort. No other classes are
+  resolved.
+- **Merge**: Type conflict → abort. No other keys are merged.
+- **Interpolation**: First `ReferenceNotFound` → abort (unless
+  `group_errors` is enabled, which only collects `ReferenceNotFound`
+  errors, not `CircularReference` or `TypeMerge`).
+- **Binary exit**: `process::exit(1)` on first error.
+
+The one exception: `interpolation::interpolate()` with `group_errors`
+collects multiple `ReferenceNotFound` errors. But `CircularReference`,
+`ChangedConstantParameter`, and `TypeMerge` still abort immediately.
+
+### Target Behavior: Collect and Continue
+
+For interactive interfaces, we need to collect as many diagnostics as
+possible and report them all at once. A user editing a YAML file should
+see all problems in one pass, not fix one error, re-run, fix the next,
+re-run, etc.
+
+The diagnostic model should have severity levels:
+
+| Severity     | Meaning                                          | Example                                    |
+|--------------|--------------------------------------------------|--------------------------------------------|
+| **Error**    | Prevents a node from merging correctly          | Missing class, circular reference, type conflict |
+| **Warning**  | Suspicious but valid                             | Override of constant parameter, duplicate class reference, overridden value |
+| **Info**     | Informational, no action needed                  | Class mapping matched a pattern             |
+| **Hint**     | Suggestion for improvement                       | Unused class, parameter that could be simplified |
+
+### Error Conditions (should be collected, not abort)
+
+| Condition                                | Current Behavior         | Target Behavior                          |
+|------------------------------------------|--------------------------|------------------------------------------|
+| YAML parse error in a class/node file    | Abort                    | Collect; continue loading other files     |
+| Missing class reference                  | Abort (unless ignored)   | Error diagnostic on the reference         |
+| Missing node reference                   | Abort                    | Error diagnostic on the reference         |
+| Circular reference in interpolation      | Abort                    | Error diagnostic on the circular path     |
+| Type conflict during merge               | Abort                    | Error diagnostic on the conflicting key    |
+| Unresolved `${...}` reference            | Abort (unless grouped)  | Error diagnostic on the reference          |
+| Invalid `~`/`=` usage                    | Abort                    | Error diagnostic on the key                 |
+| Invalid YAML structure (wrong types)     | Abort                    | Error diagnostic on the file                |
+| Duplicate node name                      | Abort                    | Error diagnostic on both files              |
+
+### Warning Conditions (currently silent or log-only)
+
+These are currently not surfaced at all — they happen silently during
+merge or are only visible via `tracing::warn!`:
+
+| Condition                                | Current Behavior         | Target Behavior                          |
+|------------------------------------------|--------------------------|------------------------------------------|
+| Duplicate class in `classes:` list       | Silently deduplicated    | Warning: "class X listed twice"           |
+| Override of `=` (constant) parameter    | Abort if `strict`        | Warning (non-strict): "constant X overridden" |
+| Value overridden by later class          | Silent                   | Info: "key X set by class A, overridden by class B" |
+| `~` (override) marker used              | Silent                   | Hint: "override marker on key X"          |
+| Class mapping pattern matched            | `tracing::debug!`        | Info: "class mapping 'web*' matched node 'web01'" |
+| Ignored missing class (`ignore_class_notfound`) | `tracing::warn!` | Warning: "class X not found, ignored"    |
+| Overwritten missing reference            | Silent (default on)      | Info: "reference ${X} not found but overwritten by later class" |
+
+### Informational Conditions (new)
+
+These don't exist today but would be valuable:
+
+| Condition                                | Target Behavior          |
+|------------------------------------------|--------------------------|
+| Unused class (defined but not referenced by any node) | Hint: "class X is not used by any node" |
+| Parameter that could use a reference     | Hint: "value 'web01' matches node name, consider ${name}" |
+| Deep inheritance chain                   | Info: "class X inherits from 7 levels deep" |
+| Class referenced only once              | Hint: "class X is only used by node Y, consider inlining" |
+
+### Library Changes Needed
+
+#### 1. Diagnostic Type
+
+```rust
+pub enum DiagnosticSeverity {
+    Error,
+    Warning,
+    Info,
+    Hint,
+}
+
+pub struct Diagnostic {
+    pub severity: DiagnosticSeverity,
+    pub message: String,
+    pub source: SourceLocation,   // file, line, column
+    pub code: Option<String>,     // e.g., "E001", "W001"
+    pub related: Vec<SourceLocation>,  // secondary locations
+}
+
+pub struct DiagnosticReport {
+    pub diagnostics: Vec<Diagnostic>,
+    pub inventory: Option<Inventory>,  // Some if load succeeded (possibly partial)
+}
+```
+
+#### 2. Error Collection in `load()`
+
+Currently `load()` returns `Result<Inventory, Error>`. It should return
+`Result<DiagnosticReport, Error>` where `DiagnosticReport` contains both
+the collected diagnostics and the (possibly partial) inventory. Fatal
+errors (can't read directory, invalid config) still return `Err`. All
+per-file, per-class, and per-node errors become diagnostics in the report.
+
+```rust
+// Before:
+pub fn load(options: &StorageOptions) -> Result<Inventory, Error>;
+
+// After:
+pub fn load(options: &StorageOptions) -> Result<DiagnosticReport, Error>;
+// DiagnosticReport { diagnostics: Vec<Diagnostic>, inventory: Option<Inventory> }
+```
+
+The caller decides what to do with errors vs warnings. The CLI can exit
+on any `Error`-severity diagnostic. The LSP and Explorer show all
+diagnostics but still display the partial inventory.
+
+#### 3. Error Collection in Merge
+
+`merge_node()` currently returns `Result<Node, merge::Error>`. It should
+collect errors and warnings:
+
+```rust
+// Before:
+pub fn merge_node(&self, name: &str) -> Result<Node, Error>;
+
+// After:
+pub fn merge_node(&self, name: &str) -> Result<MergeResult, Error>;
+// MergeResult { node: Node, diagnostics: Vec<Diagnostic> }
+```
+
+A node that has missing classes can still produce a partial merge — the
+missing class's parameters are simply absent. The caller gets the node
+*and* the list of problems.
+
+#### 4. Source Locations
+
+The parser currently discards file/line information after parsing. The
+LSP needs this for go-to-definition and diagnostic locations. The library
+needs it for meaningful error messages.
+
+```rust
+pub struct SourceLocation {
+    pub file: PathBuf,
+    pub line: usize,
+    pub column: usize,
+}
+```
+
+This must be stored on `Class`, `Node`, and `Value` during parsing.
+The YAML parser (`yaml_rust2`) provides `Mark` objects with line/column
+info that we currently ignore.
+
+#### 5. Merge Provenance (for Warnings)
+
+To produce "key X overridden by class Y" warnings, we need to track which
+class contributed each key. This overlaps with the merge replay feature
+(`MergeStep`), but provenance tracking can be lighter weight — just a
+`HashMap<Key, String>` mapping parameter keys to source class names.
+
+### Phasing
+
+| Phase | Change                                                    | Effort |
+|-------|-----------------------------------------------------------|--------|
+| 0     | Add `Diagnostic` and `DiagnosticSeverity` types           | Low    |
+| 0     | Add `SourceLocation` to `Class` and `Node` during parse   | Medium |
+| 1     | Change `load()` to collect per-file errors and continue   | Medium |
+| 1     | Change `merge_node()` to return `MergeResult` with diag   | Medium |
+| 2     | Extend `group_errors` to cover all interpolation errors   | Medium |
+| 2     | Add warning-level diagnostics (duplicates, overrides)    | Medium |
+| 3     | Add info/hint diagnostics (unused classes, deep chains)   | Low    |
+
+Phase 0 and 1 changes are prerequisites for the LSP. Phase 2 and 3 can
+come later.
 
 ---
 
@@ -232,7 +422,7 @@ exactly like an LSP does for code.
 
 | Feature          | LSP Method                      | What it does                                                                                                    |
 | ---------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Diagnostics      | `textDocument/publishDiagnostics` | Red-squiggly on missing classes, circular references, unresolved `${...}`, invalid `~`/`=` usage, YAML errors      |
+| Diagnostics      | `textDocument/publishDiagnostics` | All errors, warnings, and hints from the diagnostic system: missing classes, circular references, unresolved `${...}`, invalid `~`/`=` usage, YAML errors, duplicate class refs, overridden constants, unused classes |
 | Go-to-definition | `textDocument/definition`         | Click a class name in a node file → jump to the class YAML file. Click a node name → jump to the node file          |
 | Find references  | `textDocument/references`         | Right-click a class → find all nodes that include it. Right-click a node → find all places it's referenced          |
 | Hover            | `textDocument/hover`              | Hover over a class name in a node → see the merged parameters that class contributes. Hover over `${foo:bar}` → see the resolved value |
@@ -281,6 +471,7 @@ Merge replay ──────→ merge_node_with_replay(name) → CodeLens / c
 
 | Need                          | Current state                                | What's needed                                                                                     |
 | ----------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Diagnostic collection        | Aborts on first error; warnings are log-only | `DiagnosticReport` type that collects errors/warnings/hints per file, per node, per key          |
 | Source location mapping       | Parser discards file/line info after parsing | Store `SourceLocation { file, line, col }` on each `Class`, `Node`, and `Value` during parsing    |
 | File path to entity mapping   | `Inventory` stores entities by name, not file | A `HashMap<String, PathBuf>` mapping class/node names to their YAML files                          |
 | Incremental re-parse          | `load()` re-reads everything from disk        | Watch for file changes, re-parse only affected files, re-merge affected nodes                      |
@@ -288,9 +479,17 @@ Merge replay ──────→ merge_node_with_replay(name) → CodeLens / c
 | Merge replay                  | Not yet implemented                          | `merge_node_with_replay()` from Phase 3 in `api-review.md`                                         |
 | Thread-safe inventory         | `Rc<Value>` is `!Send + !Sync`               | Phase 1 `Arc` migration                                                                            |
 
-**Source location tracking** is the one thing not yet in the roadmap
-that the LSP specifically needs. It's also useful for error messages —
-currently errors say "class not found" but not *where* the reference is.
+**Source location tracking** and **diagnostic collection** are the two
+things not yet in the roadmap that the LSP specifically needs. Both are
+also valuable for the CLI — better error messages with file/line numbers
+and collecting all errors instead of aborting on the first one.
+
+**Diagnostic collection** is the biggest change: it requires converting
+the entire pipeline from `Result<T, Error>` abort-on-first-error to a
+collect-and-continue model where `load()` returns a `DiagnosticReport`
+with both the collected problems and the (possibly partial) inventory.
+This affects every layer: file loading, class resolution, merging, and
+interpolation.
 
 ### Architecture
 
@@ -353,8 +552,8 @@ add another 4-6 weeks.
 
 | LSP Feature          | Depends on (from api-review.md)                         |
 | -------------------- | ------------------------------------------------------- |
-| Diagnostics          | Phase 0: unified error types                            |
-| Go-to-definition     | New: source location tracking in parser                 |
+| Diagnostics          | Phase 0: diagnostic collection + source locations       |
+| Go-to-definition     | Phase 0: source location tracking in parser             |
 | Find references      | Phase 2: query API                                      |
 | Hover / merge replay | Phase 3: merge replay API                               |
 | Autocomplete         | Phase 0: public `class_names()`/`node_names()`          |
@@ -450,13 +649,15 @@ Pre-configured prompt templates:
 
 ### Must Have (for all three interfaces)
 
-| Change                                   | Phase  | Effort | Impact                     |
-|------------------------------------------|--------|--------|----------------------------|
-| Decouple adapters from loading           | 0      | Medium | Enables all interfaces      |
-| Unify error types                         | 0      | Low    | Cleaner public API          |
-| Make `add_node`/`add_class` public       | 0      | Trivial| Enables programmatic construction |
-| Switch `Rc` → `Arc` in `Value`           | 1      | Medium | Enables thread safety       |
-| Query API (filter, search)               | 2      | Medium | Enables all interfaces      |
+| Change                                        | Phase  | Effort | Impact                                      |
+|-----------------------------------------------|--------|--------|---------------------------------------------|
+| Decouple adapters from loading                | 0      | Medium | Enables all interfaces                       |
+| Unify error types                              | 0      | Low    | Cleaner public API                           |
+| Diagnostic collection (`DiagnosticReport`)   | 0      | High   | Collect errors instead of aborting — required for LSP, useful for all |
+| Source locations in parser (`SourceLocation`)  | 0      | Medium | Required for LSP go-to-def, better error messages everywhere |
+| Make `add_node`/`add_class` public            | 0      | Trivial| Enables programmatic construction            |
+| Switch `Rc` → `Arc` in `Value`                | 1      | Medium | Enables thread safety                        |
+| Query API (filter, search)                    | 2      | Medium | Enables all interfaces                       |
 
 ### Should Have (the core differentiator)
 
@@ -464,7 +665,7 @@ Pre-configured prompt templates:
 |------------------------------------------|----------------|--------|-------------------------------------------------|
 | Merge replay API                         | All            | Medium | Step-by-step merge inspection — the killer feature |
 | Pre/post interpolation toggle            | All            | Low    | Show raw `${...}` refs vs resolved values        |
-| Source location tracking in parser       | LSP            | Medium | Enables go-to-definition, better error messages |
+| Warning-level diagnostics                | All            | Medium | Duplicate classes, overridden constants, unused classes |
 | Interpolation source tracing             | Explorer, MCP  | Medium | Debug reference chains                          |
 | `explain_merge()` human-readable output  | MCP            | Low    | Agent-friendly explanations                     |
 | Lazy/incremental inventory loading        | Explorer, MCP  | High   | Fast startup for large inventories              |
