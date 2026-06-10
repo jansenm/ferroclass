@@ -245,4 +245,30 @@ into "transparent pipeline you can inspect at every stage."
 ### Phase 4: Feature work
 
 - Requirements/prerequisites validation
-- MCP server, TUI, web interface (see `docs/interfaces.md`)
+- See `docs/interfaces.md` for interface-specific features
+
+## Roadmap: Interfaces
+
+The three interfaces (LSP, MCP, Explorer) build on the library phases
+above, but the order matters. From the analysis in `docs/interfaces.md`:
+
+1. **LSP first** — Highest impact for the least effort. Meets users where
+   they already work (their editor). No UI to build — the editor IS the
+   UI. Diagnostics, go-to-definition, hover, and autocomplete transform
+   the experience of editing inventory YAML. Depends on Phases 0-2.
+
+2. **MCP second** — Straightforward JSON-RPC over stdio. Lower impact
+   than LSP (agents are less enthusiastic than humans) but easy to build
+   once the library API is clean. Depends on Phases 0-3.
+
+3. **Explorer (TUI/Web) last** — Most work. Two renderers, REST API,
+   WebSocket, file watching. The merge replay feature is the killer
+   feature but requires significant UI investment. Depends on Phases 0-3.
+
+```
+Phase 0 (API cleanup + diagnostics) ──┐
+Phase 1 (thread safety)               ├── LSP v1
+Phase 2 (query API + error collection) ┘
+Phase 3 (merge replay) ─────────────────── MCP v1
+Phase 4 (Explorer) ────────────────────── TUI + Web UI
+```

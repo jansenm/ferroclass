@@ -682,6 +682,57 @@ Pre-configured prompt templates:
 
 ---
 
+## Sequencing: LSP First, MCP Second, Explorer Third
+
+The three interfaces depend on the same library improvements, but the
+implementation order matters for impact and effort:
+
+```
+Phase 0 (API cleanup + diagnostics + source locations)
+Phase 1 (thread safety: Rc → Arc)
+Phase 2 (query API + error collection) ──→ LSP v1 (diagnostics, go-to-def, hover, autocomplete)
+Phase 3 (merge replay) ─────────────────→ MCP v1 (tools, resources, prompts)
+Phase 4 (Explorer features) ────────────→ TUI + Web UI
+```
+
+### Why LSP first
+
+- **No UI to build.** The editor IS the UI. We implement a protocol, not
+  a rendering layer. This is dramatically less work than a TUI or web app.
+- **Highest user impact.** Users spend their time in editors. Showing
+  diagnostics, go-to-definition, and hover in the exact context where they
+  edit YAML files is transformative.
+- **Smallest surface area.** An LSP server is a JSON-RPC process over stdio.
+  No HTTP server, no authentication, no multi-user concerns. Just load
+  inventory, answer questions.
+- **Forces library improvements.** The LSP requires error collection
+  (Phase 0-2), source locations (Phase 0), and query API (Phase 2) — all
+  things that benefit every other interface too.
+- **~12-16 weeks** for a usable v1 with diagnostics, go-to-definition,
+  references, hover, and autocomplete.
+
+### Why MCP second
+
+- **Even smaller surface area than LSP.** JSON-RPC over stdio, no rendering.
+- **Lower impact than LSP** — agents are useful but humans are the primary
+  audience. An MCP server is a nice-to-have, not the game-changer that an
+  LSP is.
+- **Depends on merge replay** (Phase 3) for the `get_node_replay` and
+  `explain_merge` tools, which are the most useful MCP features.
+- **~4-6 weeks** after Phase 3 is complete.
+
+### Why Explorer last
+
+- **Most work.** Two renderers (TUI + Web), REST API, WebSocket, file
+  watching, authentication, merge replay UI. This is a full application,
+  not a protocol adapter.
+- **Merge replay UI** is the killer feature but requires significant
+  frontend investment — step navigation, diff views, pre/post
+  interpolation toggles.
+- **~20-30 weeks** for a usable v1 with both TUI and Web frontends.
+
+---
+
 ## Open Questions
 
 1. **Merge replay: snapshot granularity** — Should each step snapshot the
