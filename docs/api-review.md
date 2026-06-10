@@ -157,8 +157,85 @@ Low-risk changes that unblock everything else:
 - Incremental merge: don't force full `build_inventory_map()` upfront
 - Progress callbacks or tracing spans for observability
 
-### Phase 3: Feature work
+### Phase 3: Merge Replay
+
+The marquee feature for all interfaces. Expose the intermediate state of a
+node at each step of the merge process, so users can click through the
+inheritance chain and see how parameters evolve.
+
+**Current state**: `merge_node_impl` in `src/inventory/merge.rs` builds a
+`MergeAccumulator` step by step — one class at a time — but discards all
+intermediate states. Only the final merged result is returned.
+
+**Proposed API**:
+
+```rust
+/// A snapshot of the accumulator state after merging one step.
+pub struct MergeStep {
+    /// What kind of step produced this snapshot
+    pub step_type: MergeStepType,
+    /// The class or entity name that was merged in this step
+    pub source_name: String,
+    /// The accumulator state AFTER this step was applied
+    pub parameters: ParametersType,
+    pub exports: ParametersType,
+    pub classes: Vec<String>,
+    pub applications: Applications,
+    pub environment: Environment,
+}
+
+pub enum MergeStepType {
+    /// A class-mapping class was merged
+    ClassMapping,
+    /// Input data was merged
+    InputData,
+    /// Automatic parameters (_reclass_) were added
+    AutomaticParameters,
+    /// A node's declared class was merged
+    NodeClass,
+    /// A parent class within recurse_class was merged
+    ParentClass { parent_of: String },
+    /// The node's own fields were merged
+    NodeFields,
+}
+
+/// Result of a merge replay, containing all intermediate steps
+/// plus the final merged node.
+pub struct MergeReplay {
+    /// Each step in the merge, in order
+    pub steps: Vec<MergeStep>,
+    /// The fully merged and interpolated node
+    pub final_node: Node,
+    /// Pre-interpolation parameters (with ${...} references visible)
+    pub pre_interpolation_parameters: ParametersType,
+    /// Pre-interpolation exports (with ${...} references visible)
+    pub pre_interpolation_exports: ParametersType,
+}
+
+impl Inventory {
+    /// Like merge_node, but returns intermediate steps for replay.
+    pub fn merge_node_with_replay(&self, name: &str)
+        -> Result<MergeReplay, Error>;
+
+    /// Like merge_node_with_inventory, but returns intermediate steps.
+    pub fn merge_node_with_inventory_and_replay(&self, name: &str,
+        inventory: &InventoryMap) -> Result<MergeReplay, Error>;
+}
+```
+
+**Implementation**: Add an optional `&mut Vec<MergeStep>` collector to
+`merge_node_impl`. After each `merge_descent_into` and
+`merge_entity_fields` call, clone the accumulator and push a step.
+Capture pre-interpolation state before Phase 6. This is low-risk because
+`MergeAccumulator` is already `Clone`.
+
+**Why this matters**: Merge replay is the single most useful feature for
+understanding reclass-style inventories. Users select a node, see the
+inheritance chain, and click through it step by step watching parameters
+evolve. This transforms reclass from "black box that produces a result"
+into "transparent pipeline you can inspect at every stage."
+
+### Phase 4: Feature work
 
 - Requirements/prerequisites validation
-- Early node values during merge (expose intermediate state)
 - MCP server, TUI, web interface (see `docs/interfaces.md`)

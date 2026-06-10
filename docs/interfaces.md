@@ -6,17 +6,37 @@
 This document brainstorms the features each interface should expose
 and the library API changes needed to support them.
 
+## The Killer Feature: Merge Replay
+
+All three interfaces share one feature that makes ferroclass genuinely
+useful beyond what the CLI provides: **merge replay** — the ability to
+select a node, see its inheritance chain, and click through it step by
+step while watching parameters evolve.
+
+This is how you answer "why does this node have this value?" You walk
+the chain: "after `base`, port was 80. After `webserver`, port became
+8080. After `production`, the `${env}` reference resolved to `prod`."
+Each step shows the complete parameter state at that point in the merge.
+
+The library needs a `merge_node_with_replay()` API that returns not just
+the final merged node, but every intermediate `MergeStep` — the class
+that was merged, and the full parameter state after it was applied.
+See `docs/api-review.md` Phase 3 for the proposed data structures.
+
+This feature is so central that it should be designed and built first,
+before the interface shells.
+
 ## Common Requirements
 
 All three interfaces share these needs:
 
-| Need                          | Current Gap                                    | API Change Required                    |
-|-------------------------------|------------------------------------------------|---------------------------------------|
-| Load inventory once, query many times | Adapters re-load from disk on every call  | Decouple adapters from loading        |
-| Search and filter nodes       | Only `get_node(name)` and `node_names()`      | Query API with indexing               |
-| Thread-safe inventory handle  | `Rc<Value>` is `!Send + !Sync`                | Switch to `Arc<Value>`               |
-| Progress reporting during load| No callback or event system                    | Tracing spans or callback hook        |
-| Unified error handling        | Fragmented error types                         | Single `ferroclass::Error`            |
+| Need                                  | Current Gap                              | API Change Required            |
+|---------------------------------------|------------------------------------------|--------------------------------|
+| Load inventory once, query many times | Adapters re-load from disk on every call | Decouple adapters from loading |
+| Search and filter nodes               | Only `get_node(name)` and `node_names()` | Query API with indexing        |
+| Thread-safe inventory handle          | `Rc<Value>` is `!Send + !Sync`           | Switch to `Arc<Value>`         |
+| Progress reporting during load        | No callback or event system              | Tracing spans or callback hook |
+| Unified error handling                | Fragmented error types                   | Single `ferroclass::Error`     |
 
 ---
 
@@ -33,6 +53,36 @@ commands or scripts.
 - Anyone wanting quick inventory exploration without remembering CLI flags
 
 ### Core Features
+
+#### Merge Replay (the main feature)
+
+- Select a node → see its full inheritance chain (class by class)
+- Click on any step in the chain → see the complete parameter state at
+  that point in the merge
+- See which class contributed which keys (new keys highlighted, changed
+  keys marked)
+- Toggle between pre-interpolation view (raw `${...}` references visible)
+  and post-interpolation view (all references resolved)
+- Step forward/backward through the merge like a debugger
+- Diff any two steps to see exactly what changed
+
+```
+┌─ Merge Replay: web01 ──────────────────────────────────────────┐
+│ Step 1/5: ClassMapping "default"                               │
+│ Step 2/5: AutoParameters                                       │
+│ ▸ Step 3/5: Class "base"                    ◄── selected       │
+│   Step 4/5: Class "webserver"                                   │
+│   Step 5/5: Node fields                                        │
+├────────────────────────────────────────────────────────────────┤
+│ Parameters after step 3 (class "base"):                        │
+│   hostname: web01                                             │
+│   role: base                                                  │
+│ + base_setting: true           ◄── new key from this step     │
+│ + log_level: INFO              ◄── new key from this step     │
+│                                                                │
+│ [Pre-interpolation] [Post-interpolation] [Diff from step 2]  │
+└────────────────────────────────────────────────────────────────┘
+```
 
 #### Node Browser
 
@@ -70,17 +120,17 @@ commands or scripts.
 
 ### API Requirements
 
-| TUI Feature                    | Library API Needed                                          |
-|--------------------------------|-------------------------------------------------------------|
-| Node list with filters         | `find_nodes(pattern)`, `find_nodes_by_class(name)`, `find_nodes_by_environment(env)` |
-| Merged node parameters         | `inventory.merge_node(name)` (already exists)               |
-| Merge order / provenance        | `inventory.merge_node_with_provenance(name)` → returns each key with its source class |
-| Class list and lookup           | `inventory.class_names()`, `inventory.get_class(name)` (already exists) |
-| Class inverse lookup            | `find_nodes_by_class(name)`                                  |
-| Unresolved interpolation view   | Access to `Value::Reference`/`Value::StringWithReference` before interpolation |
-| Circular reference detection    | Already detected during merge; expose as structured data     |
-| Full-text parameter search      | `search_parameters(query)` returning node names + matching keys |
-| Reload inventory from disk      | `inventory.reload()` or `load()` again (needs decoupled adapters) |
+| TUI Feature                   | Library API Needed                                                                    |
+|-------------------------------|---------------------------------------------------------------------------------------|
+| Node list with filters        | `find_nodes(pattern)`, `find_nodes_by_class(name)`, `find_nodes_by_environment(env)`  |
+| Merged node parameters        | `inventory.merge_node(name)` (already exists)                                         |
+| Merge replay                  | `inventory.merge_node_with_replay(name)` → `MergeReplay` with `Vec<MergeStep>`        |
+| Class list and lookup         | `inventory.class_names()`, `inventory.get_class(name)` (already exists)               |
+| Class inverse lookup          | `find_nodes_by_class(name)`                                                           |
+| Unresolved interpolation view | Pre-interpolation state from `MergeReplay::pre_interpolation_parameters`              |
+| Circular reference detection  | Already detected during merge; expose as structured data                              |
+| Full-text parameter search    | `search_parameters(query)` returning node names + matching keys                       |
+| Reload inventory from disk    | `inventory.reload()` or `load()` again (needs decoupled adapters)                     |
 
 ### Interaction Model
 
@@ -89,16 +139,14 @@ once at startup (or on user command), then queried repeatedly:
 
 ```
 ┌─ Node List ─────────────────┐ ┌─ Node Detail: web01 ─────────────┐
-│ ▸ web01                      │ │ Classes: [default, web, apache]  │
-│   web02                      │ │ Applications: [apache]           │
-│   db01                       │ │ Parameters:                      │
-│ ▸ db02                       │ │   hostname: web01               │
-│   monitor01                  │ │   role: webserver               │
-│                              │ │   apache::                       │
-│ [Search: role=web]           │ │     port: 8080                  │
-└──────────────────────────────┘ │     vhosts: [...]               │
-                                  │ [Merge Order] [Raw] [Search]   │
-                                  └──────────────────────────────────┘
+│ ▸ web01                      │ │ Step 3/5: Class "webserver"       │
+│   web02                      │ │ + port: 8080                     │
+│   db01                       │ │ + role: webserver                │
+│ ▸ db02                       │ │                                   │
+│   monitor01                  │ │ [◀ Step 2] [Step 4 ▶]            │
+│                              │ │ [Pre-interp] [Post-interp] [Diff] │
+│ [Search: role=web]           │ └──────────────────────────────────┘
+└──────────────────────────────┘
 ```
 
 ### Dependencies
@@ -106,7 +154,7 @@ once at startup (or on user command), then queried repeatedly:
 - `ratatui` + `crossterm` for rendering
 - Thread-safe inventory handle (Phase 1)
 - Query API (Phase 2)
-- Merge provenance tracking (new)
+- Merge replay API (Phase 3)
 
 ---
 
@@ -126,26 +174,42 @@ multi-user access.
 
 All TUI features, plus:
 
+#### Merge Replay
+
+The web version of merge replay is especially powerful because clicking
+through steps is a natural browser interaction. Each step in the chain
+is a clickable element; the parameter panel updates live.
+
+- Step-by-step navigation with prev/next buttons and clickable step list
+- Diff view: highlight keys added, changed, or overridden at each step
+- Pre/post interpolation toggle: show raw `${...}` references or resolved
+  values with a single click
+- Shareable URLs: `/nodes/web01/replay?step=3` links directly to a
+  specific merge step
+- Side-by-side diff of any two steps
+
 #### REST API
 
 The web UI is backed by a JSON API that can also be used programmatically:
 
-| Endpoint                                    | Description                                    |
-|---------------------------------------------|------------------------------------------------|
-| `GET /api/v1/nodes`                         | List all nodes (with optional filters)          |
-| `GET /api/v1/nodes/:name`                   | Get merged node detail                         |
-| `GET /api/v1/nodes/:name/parameters`        | Get merged parameters only                      |
-| `GET /api/v1/nodes/:name/classes`           | Get resolved class list                         |
-| `GET /api/v1/nodes/:name/merge-order`       | Get merge provenance (which class contributed what) |
-| `GET /api/v1/nodes/:name/raw`               | Get node before interpolation/merge             |
-| `GET /api/v1/classes`                        | List all classes                                |
-| `GET /api/v1/classes/:name`                  | Get class detail                                |
-| `GET /api/v1/classes/:name/usage`            | Which nodes use this class                      |
-| `GET /api/v1/search?q=pattern`               | Full-text search across nodes and parameters    |
-| `GET /api/v1/inventory/config`               | Current inventory configuration                 |
-| `POST /api/v1/inventory/reload`              | Reload inventory from disk                       |
-| `GET /api/v1/formats/ansible?node=name`      | Ansible-formatted output                        |
-| `GET /api/v1/formats/salt?node=name`         | Salt-formatted output                            |
+| Endpoint                                | Description                                         |
+|-----------------------------------------|-----------------------------------------------------|
+| `GET /api/v1/nodes`                     | List all nodes (with optional filters)              |
+| `GET /api/v1/nodes/:name`               | Get merged node detail                              |
+| `GET /api/v1/nodes/:name/parameters`    | Get merged parameters only                          |
+| `GET /api/v1/nodes/:name/classes`       | Get resolved class list                             |
+| `GET /api/v1/nodes/:name/merge-order`   | Get merge provenance (which class contributed what) |
+| `GET /api/v1/nodes/:name/replay`         | Full merge replay: all steps with intermediate state |
+| `GET /api/v1/nodes/:name/replay/:step`    | Single merge step (for step-by-step navigation)     |
+| `GET /api/v1/nodes/:name/raw`           | Get node before interpolation/merge                 |
+| `GET /api/v1/classes`                   | List all classes                                    |
+| `GET /api/v1/classes/:name`             | Get class detail                                    |
+| `GET /api/v1/classes/:name/usage`       | Which nodes use this class                          |
+| `GET /api/v1/search?q=pattern`          | Full-text search across nodes and parameters        |
+| `GET /api/v1/inventory/config`          | Current inventory configuration                     |
+| `POST /api/v1/inventory/reload`         | Reload inventory from disk                          |
+| `GET /api/v1/formats/ansible?node=name` | Ansible-formatted output                            |
+| `GET /api/v1/formats/salt?node=name`    | Salt-formatted output                               |
 
 #### WebSocket Updates
 
@@ -163,13 +227,13 @@ The web UI is backed by a JSON API that can also be used programmatically:
 
 Same as TUI, plus:
 
-| Web Feature                     | Library API Needed                                          |
-|---------------------------------|-------------------------------------------------------------|
+| Web Feature                     | Library API Needed                                             |
+|---------------------------------|----------------------------------------------------------------|
 | JSON serialization of all types | `Serialize` already exists for most types; verify completeness |
-| Streaming merge progress        | Callback or channel-based progress reporting                |
-| File watch + reload             | `inventory.reload()` or `load()` again; decouple from adapter |
-| Concurrent read access          | `Arc<Inventory>` (Phase 1: Send + Sync)                     |
-| Ansible/Salt format endpoints   | Decoupled adapter functions (Phase 0)                        |
+| Streaming merge progress        | Callback or channel-based progress reporting                   |
+| File watch + reload             | `inventory.reload()` or `load()` again; decouple from adapter  |
+| Concurrent read access          | `Arc<Inventory>` (Phase 1: Send + Sync)                        |
+| Ansible/Salt format endpoints   | Decoupled adapter functions (Phase 0)                          |
 
 ### Technology Choices
 
@@ -204,6 +268,7 @@ The server exposes these tools following the MCP specification:
 |------------------------------------|------------------------------------|--------------------------------------------|
 | `list_nodes`                       | `filter?: string`, `class?: string`, `environment?: string` | List of node names with summary |
 | `get_node`                         | `name: string`                     | Full merged node (parameters, classes, applications, exports) |
+| `get_node_replay`                  | `name: string`                     | Merge replay: all steps with intermediate parameter state |
 | `get_node_parameters`              | `name: string`                     | Merged parameters only (as dict)            |
 | `get_node_classes`                  | `name: string`                     | Resolved class list with merge order        |
 | `get_node_merge_provenance`        | `name: string`, `key?: string`     | Which class contributed each parameter value |
@@ -224,6 +289,7 @@ Static data exposed as URI-addressable resources:
 |----------------------------------------|------------------------------------------|
 | `ferroclass://nodes`                   | All node names                            |
 | `ferroclass://nodes/{name}`            | Merged node detail                        |
+| `ferroclass://nodes/{name}/replay`    | Merge replay: step-by-step merge history  |
 | `ferroclass://nodes/{name}/raw`        | Node before merge/interpolation           |
 | `ferroclass://classes`                  | All class names                           |
 | `ferroclass://classes/{name}`           | Class detail                              |
@@ -236,6 +302,7 @@ Pre-configured prompt templates:
 | Prompt Name                    | Description                                              |
 |--------------------------------|----------------------------------------------------------|
 | `debug_node`                   | "Investigate why node X has parameter Y set to Z"        |
+| `trace_merge`                  | "Walk the merge chain for node X step by step"           |
 | `compare_nodes`                | "Compare the parameters of node A and node B"           |
 | `trace_class`                  | "Show the full class inheritance chain for class X"      |
 | `find_unused_classes`          | "Find classes not included by any node"                 |
@@ -247,7 +314,7 @@ Same as TUI, plus:
 | MCP Feature                     | Library API Needed                                          |
 |----------------------------------|-------------------------------------------------------------|
 | JSON-serializable all types      | `Serialize` on `Node`, `Class`, `Inventory`, `Value`       |
-| Provenance tracking              | `merge_node_with_provenance(name)` → key → source class    |
+| Merge replay                     | `merge_node_with_replay(name)` → `MergeReplay` with `Vec<MergeStep>` |
 | Human-readable merge explanation | `explain_merge(name)` → formatted string                     |
 | Reference chain tracing          | `get_interpolation_sources(node, key)` → list of references |
 | Lightweight startup              | Lazy loading or incremental inventory construction          |
@@ -276,14 +343,15 @@ Same as TUI, plus:
 | Switch `Rc` → `Arc` in `Value`           | 1      | Medium | Enables thread safety       |
 | Query API (filter, search)               | 2      | Medium | Enables all interfaces      |
 
-### Should Have (for TUI and MCP)
+### Should Have (the core differentiator)
 
-| Change                                   | Interface | Effort | Impact                     |
-|------------------------------------------|-----------|--------|----------------------------|
-| Merge provenance tracking                | TUI, MCP  | High   | "Which class set this key" |
-| Interpolation source tracing             | TUI, MCP  | Medium | Debug reference chains      |
-| `explain_merge()` human-readable output  | MCP       | Low    | Agent-friendly explanations |
-| Lazy/incremental inventory loading       | Web, MCP  | High   | Fast startup for large inv |
+| Change                                   | Interface | Effort | Impact                                |
+|------------------------------------------|-----------|--------|---------------------------------------|
+| Merge replay API                         | TUI, Web, MCP | Medium | Step-by-step merge inspection — the killer feature |
+| Pre/post interpolation toggle            | TUI, Web, MCP | Low    | Show raw `${...}` refs vs resolved values |
+| Interpolation source tracing             | TUI, MCP  | Medium | Debug reference chains                |
+| `explain_merge()` human-readable output  | MCP       | Low    | Agent-friendly explanations           |
+| Lazy/incremental inventory loading       | Web, MCP  | High   | Fast startup for large inv            |
 
 ### Nice to Have
 
@@ -292,38 +360,54 @@ Same as TUI, plus:
 | File watching + auto-reload              | Web, TUI  | Medium | Live updates               |
 | Write endpoints (create/modify nodes)    | Web       | Very High | Full lifecycle management |
 | Requirements/prerequisites validation    | All       | High   | Policy enforcement         |
-| Early node values during merge           | All       | Very High | Complex merge strategy    |
 
 ---
 
 ## Open Questions
 
-1. **Merge provenance** — Should provenance be optional (behind a flag) to
-   avoid overhead for callers that don't need it? The merge algorithm would
-   need to track source class for each key-value pair.
+1. **Merge replay: snapshot granularity** — Should each step snapshot the
+   full `MergeAccumulator` (parameters, classes, applications, environment,
+   exports), or just parameters? Full snapshots cost more memory but enable
+   "show me which classes were resolved at step 3." Parameter-only snapshots
+   are lighter but lose that context.
 
-2. **Interpolation before/after** — Should we expose both the unresolved
+2. **Merge replay: depth-first visibility** — When class A inherits from B
+   which inherits from C, the depth-first resolution merges C → B → A. Should
+   the replay show each parent class as a separate step (C step, then B step,
+   then A step), or collapse the entire inheritance resolution into one step?
+   Showing each parent class is more useful for debugging but produces more
+   steps.
+
+3. **Interpolation before/after** — Should we expose both the unresolved
    (references visible) and resolved (interpolated) views of a node?
-   Currently `merge_node()` always interpolates. We'd need a
-   `merge_node_raw()` that skips interpolation.
+   The `MergeReplay` design captures `pre_interpolation_parameters` which
+   contains `Value::Reference`, `Value::DeferredMerge`, etc. The interface
+   needs to render these meaningfully — e.g., `${host:name}` shown as
+   "reference to host:name → resolved to 'web01'".
 
-3. **Incremental loading** — For large inventories, should we support loading
+4. **Incremental loading** — For large inventories, should we support loading
    nodes on demand (lazy) rather than all at once? This would require
    restructuring `Inventory::load()` significantly.
 
-4. **Web UI: read-only or read-write?** — A read-only web UI is
+5. **Web UI: read-only or read-write?** — A read-only web UI is
    straightforward. A read-write UI needs YAML file generation, validation,
    and conflict resolution. Start read-only.
 
-5. **MCP: local or remote?** — Local (stdio) is simpler and matches how
+6. **MCP: local or remote?** — Local (stdio) is simpler and matches how
    agents currently use MCP. Remote (HTTP/SSE) enables shared instances.
    Start local.
 
-6. **Authentication** — The web UI needs at least API key auth. The MCP
+7. **Authentication** — The web UI needs at least API key auth. The MCP
    server (stdio) inherits the agent's local access. How much auth
    infrastructure do we build?
 
-7. **Binary or library?** — Should the TUI, web server, and MCP server be
+8. **Binary or library?** — Should the TUI, web server, and MCP server be
    separate binaries (`ferroclass-tui`, `ferroclass-web`, `ferroclass-mcp`)
    or subcommands of the `reclass` binary? Separate binaries align with
    the architecture rule that binaries are thin wrappers over the library.
+
+9. **Diff computation** — For the "diff any two steps" feature in the web
+   UI, do we need a structural diff on `ParametersType` (showing added,
+   removed, and changed keys with old/new values)? This is similar to
+   `serde_json` diffing. Could use a simple key-by-key comparison since
+   `ParametersType` is a `LinkedHashMap<Key, Value>`.
