@@ -272,3 +272,193 @@ Phase 2 (query API + error collection) ┘
 Phase 3 (merge replay) ─────────────────── MCP v1
 Phase 4 (Explorer) ────────────────────── TUI + Web UI
 ```
+
+## API Design Principles
+
+These principles guide the new APIs we'll add for the LSP, MCP, and
+Explorer interfaces. They're based on analyzing the current API surface
+and identifying patterns that should change vs. patterns that are already
+correct.
+
+### Borrow when you can, own when you must
+
+Rust gives us a choice between returning borrowed data (`&str`, `&[T]`,
+`impl Iterator<Item = &T>`) and owned data (`String`, `Vec<T>`, `T`).
+The right choice depends on the lifecycle:
+
+- **Query methods on `&self`** should borrow, not allocate. The caller is
+  just reading from the inventory; they shouldn't pay for cloning.
+
+  ```rust
+  // Current: allocates a Vec<String> and clones every key on every call
+  pub fn node_names(&self) -> Vec<String>
+
+  // Preferred: borrows, zero allocation
+  pub fn node_names(&self) -> impl Iterator<Item = &str>
+  ```
+
+  This matters especially for the LSP, which calls `node_names()` on
+  every keystroke for autocomplete.
+
+- **Setters should accept flexible types.** `&str`, `String`, and
+  `impl Into<String>` callers should all work without forced allocation:
+
+  ```rust
+  // Current: forces allocation even when caller has a &str
+  pub fn set_uri(&mut self, uri: String)
+
+  // Preferred: borrows when possible, owns when needed
+  pub fn set_uri(&mut self, uri: impl Into<String>)
+  ```
+
+- **Return `&str` instead of `&String`.** `&String` exposes the interior
+  type and doesn't coerce as nicely. `&str` is the idiomatic Rust choice:
+
+  ```rust
+  // Current: exposes interior type
+  pub fn name(&self) -> &String
+
+  // Preferred: idiomatic, coerces to &str, &String, etc.
+  pub fn name(&self) -> &str
+  ```
+
+- **Constructors and merge methods should return owned types.** This is
+  already correct in the current API:
+
+  ```rust
+  // Already correct: merge creates new data, can't return a reference
+  pub fn merge_node(&self, node_name: &str) -> Result<Node, Error>
+  pub fn load(options: &StorageOptions) -> Result<Inventory, Error>
+  ```
+
+### Consume builders, don't clone them
+
+The builder pattern in Rust should consume `self`, not borrow `&mut self`.
+The current `NodeBuilder` and `ClassBuilder` take `&mut self`, which forces
+every `build()` call to clone every field:
+
+```rust
+// Current: &mut self means build() must clone every field
+let builder = Node::new("web01".to_string());
+let node1 = builder.build();  // clones name, classes, parameters, etc.
+let node2 = builder.build();  // clones everything again
+
+// Preferred: self means build() takes ownership, zero clones
+let node = Node::builder("web01".to_string())
+    .classes(vec!["web".to_string()])
+    .build();  // moves fields, zero clones
+```
+
+If someone needs a reusable builder, they can `clone()` it themselves.
+The API shouldn't force clones on every user.
+
+**Exception**: `MergeConfig` already uses the consuming pattern (`self`),
+which is correct. The builder methods return `Self` and can be chained:
+
+```rust
+let config = MergeConfig::new()
+    .value_override_prefix("~")  // consumes self, returns Self
+    .automatic_parameters(true)    // consumes self, returns Self
+    .compile_regexps();            // &mut self, mutates in place
+```
+
+### No multi-variant methods
+
+Some Rust crates provide three versions of each method:
+
+```rust
+fn foo(&self) -> &T          // borrow
+fn foo_mut(&mut self) -> &mut T  // mutable borrow
+fn into_foo(self) -> T         // consume
+```
+
+This pattern makes sense for collection types (`Vec::iter()`,
+`Vec::iter_mut()`, `Vec::into_iter()`), but not for ferroclass.
+The reason: `Inventory` has a clear ownership model.
+
+- **Load once, query many times**: `Inventory` is loaded once and then
+  read-only for queries. `&self` receivers are correct. There's no use
+  case for `&mut self` or `self` on `Inventory` (except `set_merge_config`).
+
+- **Merge produces new data**: `merge_node()` returns an owned `Node`
+  because it constructs a new merged result. You can't return a borrowed
+  reference because the data didn't exist before the merge. No need for
+  a `&self` variant.
+
+- **`Node` and `Class` are results, not containers**: You either borrow
+  them (to read) or own them (to serialize/transform). You don't need
+  three variants.
+
+**Principle**: provide the simplest signature that covers the common
+case. Only add variants when there's a demonstrated performance or
+ergonomics need.
+
+### The Rc → Arc change is internal and invisible
+
+Switching `Rc` to `Arc` in `Value` doesn't change the public API surface.
+Callers never construct `Value` directly — they get it from the library.
+The change adds `Send + Sync` guarantees invisibly.
+
+The scope is mechanical but wide:
+
+| Change                             | Sites  | Difficulty               |
+| ---------------------------------- | ------ | ------------------------ |
+| `Rc::new` → `Arc::new`            | ~100   | Search and replace       |
+| `Rc::make_mut` → `Arc::make_mut`  | 12     | Mechanical               |
+| `Rc::try_unwrap` → `Arc::try_unwrap` | 14  | Requires `Value: Send`  |
+| `use std::rc::Rc` → `use std::sync::Arc` | ~15 | Mechanical          |
+| `Regex` in `MergeConfig`          | 1      | Needs thread-safe wrapper |
+
+The performance cost of `Arc` vs `Rc` is negligible for ferroclass:
+atomic increments cost ~5-10 ns vs ~1 ns for plain increments, but the
+merge/interpolation operations each take milliseconds to seconds. The
+atomic overhead is unmeasurable in practice.
+
+The one gotcha is `regex::Regex` in `MergeConfig`, which is `!Send +
+!Sync`. The fix is to store pattern strings and compile regexes on
+demand, which `MergeConfig` already partially supports via
+`compile_regexps()`.
+
+### Diagnostic-returning APIs
+
+New methods should return structured results, not just `Result<T, Error>`:
+
+```rust
+// Current: all-or-nothing, aborts on first error
+pub fn merge_node(&self, name: &str) -> Result<Node, Error>
+
+// Preferred: partial results with diagnostics
+pub fn merge_node(&self, name: &str) -> Result<MergeResult, FatalError>
+// MergeResult { node: Node, diagnostics: Vec<Diagnostic> }
+```
+
+This lets the LSP show all problems at once (missing classes, circular
+references, type conflicts) while still producing a partial merged node.
+The CLI can keep the old behavior by checking for error-severity
+diagnostics and exiting.
+
+### Iterator-based query APIs
+
+New query methods should return iterators, not vectors:
+
+```rust
+// Preferred: borrows, lazy, zero allocation
+pub fn find_nodes_by_class(&self, class: &str) -> impl Iterator<Item = &Node>
+pub fn find_nodes_by_environment(&self, env: &Environment) -> impl Iterator<Item = &Node>
+pub fn search_nodes(&self, pattern: &str) -> impl Iterator<Item = &Node>
+```
+
+This avoids allocation when the caller just wants to iterate or take the
+first N results. If the caller needs a `Vec`, they can `.collect()`.
+
+### Current API Issues Summary
+
+| Issue                               | Current                              | Preferred                              | Impact                    |
+| ----------------------------------- | ------------------------------------ | -------------------------------------- | ------------------------- |
+| `node_names()` allocates           | `Vec<String>`                        | `impl Iterator<Item = &str>`          | LSP autocomplete perf     |
+| `name()` returns `&String`          | `&String`                            | `&str`                                 | Idiomatic Rust            |
+| `NodeBuilder`/`ClassBuilder` clone  | `&mut self` on build                  | `self` on build                         | Avoids forced clones      |
+| Setters require owned `String`     | `set_uri(String)`                     | `set_uri(impl Into<String>)`            | Caller ergonomics         |
+| `StorageOptionsTrait` clones       | `fn parameter_key_style() -> ParameterKeyStyle` | `fn parameter_key_style() -> &ParameterKeyStyle` | Avoids clone per call |
+| `merge_node()` aborts on error     | `Result<Node, Error>`                | `Result<MergeResult, FatalError>`      | LSP needs all diagnostics |
+| `Value` uses `Rc`                   | `!Send + !Sync`                      | `Arc` → `Send + Sync`                  | Thread safety             |
