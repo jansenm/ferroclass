@@ -22,6 +22,7 @@ use crate::inventory::value::{Environment, Key, ParametersType, Value};
 use crate::storage::file_system;
 use hashlink::LinkedHashMap;
 use snafu::{ResultExt, Snafu};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub(crate) mod applications;
@@ -77,7 +78,25 @@ pub fn create_automatic_parameters(nodename: &str, environment: &Environment) ->
 /// An `Inventory` is populated by [`load`] or [`load_from_yaml_string`] and
 /// provides methods to query, iterate over, and merge individual nodes and
 /// classes.
-#[derive(Debug, Default)]
+///
+/// # Reverse indexes
+///
+/// Query methods like [`find_nodes_by_class`] and [`find_nodes_by_environment`]
+/// use reverse indexes for fast lookups. These indexes are built on demand:
+///
+/// - Call [`build_indexes`] explicitly after loading if you want to control
+///   when the cost of index construction is paid.
+/// - Query methods that need indexes will fall back to a linear scan if
+///   indexes are not yet built.
+/// - Calling [`add_node`] or [`add_class`] invalidates the indexes. Call
+///   [`build_indexes`] again if you need up-to-date indexes.
+///
+/// [`find_nodes_by_class`]: Inventory::find_nodes_by_class
+/// [`find_nodes_by_environment`]: Inventory::find_nodes_by_environment
+/// [`build_indexes`]: Inventory::build_indexes
+/// [`add_node`]: Inventory::add_node
+/// [`add_class`]: Inventory::add_class
+#[derive(Debug)]
 pub struct Inventory {
     classes: LinkedHashMap<String, Class>,
     nodes: LinkedHashMap<String, Node>,
@@ -85,6 +104,12 @@ pub struct Inventory {
     class_mappings: Vec<ClassMapping>,
     class_mappings_match_path: bool,
     input_data: Option<ParametersType>,
+    /// Reverse index: class name → node names that include it.
+    /// None means not yet built; Some(HashMap) means ready for queries.
+    class_to_nodes_index: Option<HashMap<String, Vec<String>>>,
+    /// Reverse index: environment → node names in that environment.
+    /// None means not yet built; Some(HashMap) means ready for queries.
+    environment_to_nodes_index: Option<HashMap<String, Vec<String>>>,
 }
 
 #[derive(Debug)]
@@ -113,6 +138,21 @@ impl<'a> Iterator for Classes<'a> {
     }
 }
 
+impl Default for Inventory {
+    fn default() -> Self {
+        Self {
+            classes: LinkedHashMap::new(),
+            nodes: LinkedHashMap::new(),
+            merge_config: MergeConfig::default(),
+            class_mappings: Vec::new(),
+            class_mappings_match_path: false,
+            input_data: None,
+            class_to_nodes_index: None,
+            environment_to_nodes_index: None,
+        }
+    }
+}
+
 impl Inventory {
     /// Create an empty inventory with default merge configuration.
     pub fn new() -> Self {
@@ -128,6 +168,8 @@ impl Inventory {
             class_mappings: Vec::new(),
             class_mappings_match_path: false,
             input_data: None,
+            class_to_nodes_index: None,
+            environment_to_nodes_index: None,
         }
     }
 
@@ -188,13 +230,22 @@ impl Inventory {
     /// Add a class to the inventory.
     ///
     /// If a class with the same name already exists, it will be replaced.
+    /// Note: this does not invalidate reverse indexes. If you need
+    /// up-to-date indexes after adding classes, call [`build_indexes`].
+    ///
+    /// [`build_indexes`]: Inventory::build_indexes
     pub fn add_class(&mut self, class: Class) {
         self.classes.insert(class.name().to_string(), class);
+        // Invalidate indexes since class mappings may affect node-class relationships
+        self.class_to_nodes_index = None;
+        self.environment_to_nodes_index = None;
     }
 
     /// Add a node to the inventory.
     ///
     /// Returns an error if a node with the same name already exists.
+    /// This method invalidates reverse indexes since the new node
+    /// may introduce new class-node or environment-node mappings.
     pub fn add_node(&mut self, node: Node) -> Result<(), Error> {
         if let Some(existing) = self.nodes.get(node.name()) {
             return Err(Error::DuplicateNodeName {
@@ -204,6 +255,9 @@ impl Inventory {
             });
         }
         self.nodes.insert(node.name().to_string(), node);
+        // Invalidate indexes since the new node adds class-node and env-node mappings
+        self.class_to_nodes_index = None;
+        self.environment_to_nodes_index = None;
         Ok(())
     }
 
@@ -270,6 +324,202 @@ impl Inventory {
     /// an owned collection.
     pub fn node_names(&self) -> impl Iterator<Item = &str> {
         self.nodes.keys().map(|s| s.as_str())
+    }
+
+    /// Return the names of all loaded classes in insertion order.
+    ///
+    /// Returns a borrowing iterator that yields `&str` references,
+    /// avoiding allocation. Call `.collect::<Vec<_>>()` if you need
+    /// an owned collection.
+    pub fn class_names(&self) -> impl Iterator<Item = &str> {
+        self.classes.keys().map(|s| s.as_str())
+    }
+
+    /// Find all nodes that include the given class in their declared class list.
+    ///
+    /// If reverse indexes have been built (via [`build_indexes`]), this uses
+    /// an O(1) index lookup. Otherwise, it falls back to a linear scan of
+    /// all nodes.
+    ///
+    /// This only checks the node's **declared** class list — it does not
+    /// recursively resolve the class inheritance chain. To find nodes whose
+    /// *resolved* class list includes a class (including inherited classes),
+    /// use [`find_nodes_by_resolved_class`].
+    ///
+    /// [`build_indexes`]: Inventory::build_indexes
+    /// [`find_nodes_by_resolved_class`]: Inventory::find_nodes_by_resolved_class
+    pub fn find_nodes_by_class(&self, class_name: &str) -> impl Iterator<Item = &Node> {
+        if let Some(index) = &self.class_to_nodes_index {
+            // Fast path: use reverse index
+            index
+                .get(class_name)
+                .map(|names| {
+                    names
+                        .iter()
+                        .filter_map(|name| self.nodes.get(name))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+                .into_iter()
+        } else {
+            // Slow path: linear scan
+            self.nodes
+                .iter()
+                .filter_map(move |(_, node)| {
+                    if node.classes().iter().any(|c| c == class_name) {
+                        Some(node)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+        }
+    }
+
+    /// Find all nodes whose *resolved* class list includes the given class.
+    ///
+    /// Unlike [`find_nodes_by_class`], which only checks the node's declared
+    /// class list, this method merges each node and checks the full resolved
+    /// class hierarchy (including inherited classes). This is slower but more
+    /// thorough — it finds nodes where a class appears transitively through
+    /// inheritance.
+    ///
+    /// Nodes that fail to merge are skipped.
+    ///
+    /// [`find_nodes_by_class`]: Inventory::find_nodes_by_class
+    pub fn find_nodes_by_resolved_class(&self, class_name: &str) -> impl Iterator<Item = &Node> {
+        self.nodes
+            .iter()
+            .filter_map(|(_, node)| {
+                let merged = self.merge_node(node.name()).ok()?;
+                if merged.classes().iter().any(|c| c == class_name) {
+                    Some(node)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+
+    /// Find all nodes in the given environment.
+    ///
+    /// If reverse indexes have been built (via [`build_indexes`]), this uses
+    /// an O(1) index lookup. Otherwise, it falls back to a linear scan of
+    /// all nodes.
+    ///
+    /// [`build_indexes`]: Inventory::build_indexes
+    pub fn find_nodes_by_environment(&self, environment: &str) -> impl Iterator<Item = &Node> {
+        if let Some(index) = &self.environment_to_nodes_index {
+            // Fast path: use reverse index
+            index
+                .get(environment)
+                .map(|names| {
+                    names
+                        .iter()
+                        .filter_map(|name| self.nodes.get(name))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+                .into_iter()
+        } else {
+            // Slow path: linear scan
+            self.nodes
+                .iter()
+                .filter_map(move |(_, node)| {
+                    if node.environment() == environment {
+                        Some(node)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+        }
+    }
+
+    /// Search for nodes whose name contains the given pattern (case-insensitive).
+    ///
+    /// This performs a linear scan of all node names, checking if the
+    /// pattern appears as a substring (case-insensitive). For large
+    /// inventories where this is called frequently, consider building
+    /// an external index.
+    pub fn search_nodes(&self, pattern: &str) -> impl Iterator<Item = &Node> {
+        let pattern_lower = pattern.to_lowercase();
+        self.nodes
+            .iter()
+            .filter_map(move |(name, node)| {
+                if name.to_lowercase().contains(&pattern_lower) {
+                    Some(node)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+
+    /// Build reverse indexes for fast queries.
+    ///
+    /// This method constructs the `class_to_nodes` and `environment_to_nodes`
+    /// reverse indexes used by [`find_nodes_by_class`] and
+    /// [`find_nodes_by_environment`]. Call it explicitly after loading an
+    /// inventory if you want to pay the index construction cost upfront
+    /// instead of on first query.
+    ///
+    /// If the indexes are already built, this method is a no-op.
+    /// The indexes are invalidated whenever [`add_node`] or [`add_class`]
+    /// is called. Call this method again after mutations if you need
+    /// up-to-date indexes.
+    ///
+    /// [`find_nodes_by_class`]: Inventory::find_nodes_by_class
+    /// [`find_nodes_by_environment`]: Inventory::find_nodes_by_environment
+    /// [`add_node`]: Inventory::add_node
+    /// [`add_class`]: Inventory::add_class
+    pub fn build_indexes(&mut self) {
+        if self.class_to_nodes_index.is_some() && self.environment_to_nodes_index.is_some() {
+            return;
+        }
+
+        let mut class_to_nodes: HashMap<String, Vec<String>> = HashMap::new();
+        let mut env_to_nodes: HashMap<String, Vec<String>> = HashMap::new();
+
+        for (node_name, node) in &self.nodes {
+            // Index by each declared class
+            for class_name in node.classes() {
+                class_to_nodes
+                    .entry(class_name.clone())
+                    .or_default()
+                    .push(node_name.clone());
+            }
+            // Index by environment
+            env_to_nodes
+                .entry(node.environment().to_string())
+                .or_default()
+                .push(node_name.clone());
+        }
+
+        self.class_to_nodes_index = Some(class_to_nodes);
+        self.environment_to_nodes_index = Some(env_to_nodes);
+    }
+
+    /// Return the class-to-nodes reverse index, building it if necessary.
+    ///
+    /// Each entry maps a class name to the list of node names that declare
+    /// that class in their class list.
+    pub fn class_to_nodes(&mut self) -> &HashMap<String, Vec<String>> {
+        self.build_indexes();
+        self.class_to_nodes_index.as_ref().unwrap()
+    }
+
+    /// Return the environment-to-nodes reverse index, building it if necessary.
+    ///
+    /// Each entry maps an environment name to the list of node names in
+    /// that environment.
+    pub fn environment_to_nodes(&mut self) -> &HashMap<String, Vec<String>> {
+        self.build_indexes();
+        self.environment_to_nodes_index.as_ref().unwrap()
     }
 
     /// Build a map of all merged nodes for inventory-query resolution.
@@ -3964,5 +4214,560 @@ mod tests {
             Some(&Value::String("a".to_string())),
             "input_data param not overridden by classes should be present"
         );
+    }
+
+    // --- Query API tests ---
+
+    #[test]
+    fn test_class_names_returns_all_class_names() {
+        use indoc::indoc;
+
+        const TEST_INVENTORY: &str = indoc!(
+            r#"---
+               ---
+               name: base
+               parameters:
+                   global: true
+               ---
+               name: webserver
+               parameters:
+                   role: web
+               ---
+               name: db
+               parameters:
+                   role: db
+               ---
+               name: node1
+               type: node
+               classes:
+                   - base
+                   - webserver
+               "#
+        );
+
+        let inventory = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::None)
+            .expect("failed to parse");
+
+        let class_names: Vec<&str> = inventory.class_names().collect();
+        assert!(
+            class_names.contains(&"base"),
+            "should contain 'base', got {:?}",
+            class_names
+        );
+        assert!(
+            class_names.contains(&"webserver"),
+            "should contain 'webserver', got {:?}",
+            class_names
+        );
+        assert!(
+            class_names.contains(&"db"),
+            "should contain 'db', got {:?}",
+            class_names
+        );
+        assert_eq!(class_names.len(), 3, "should have 3 classes");
+    }
+
+    #[test]
+    fn test_find_nodes_by_class_without_index() {
+        use indoc::indoc;
+
+        const TEST_INVENTORY: &str = indoc!(
+            r#"---
+               ---
+               name: base
+               parameters:
+                   global: true
+               ---
+               name: webserver
+               parameters:
+                   role: web
+               ---
+               name: node1
+               type: node
+               classes:
+                   - base
+                   - webserver
+               ---
+               name: node2
+               type: node
+               classes:
+                   - base
+               "#
+        );
+
+        let inventory = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::None)
+            .expect("failed to parse");
+
+        // Without building indexes, find_nodes_by_class should still work (linear scan)
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_class("webserver")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(nodes, vec!["node1"], "only node1 declares webserver class");
+
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_class("base")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(nodes.len(), 2, "both nodes declare base class");
+    }
+
+    #[test]
+    fn test_find_nodes_by_class_with_index() {
+        use indoc::indoc;
+
+        const TEST_INVENTORY: &str = indoc!(
+            r#"---
+               ---
+               name: base
+               parameters:
+                   global: true
+               ---
+               name: webserver
+               parameters:
+                   role: web
+               ---
+               name: node1
+               type: node
+               classes:
+                   - base
+                   - webserver
+               ---
+               name: node2
+               type: node
+               classes:
+                   - base
+               "#
+        );
+
+        let mut inventory = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::None)
+            .expect("failed to parse");
+
+        // Build indexes explicitly
+        inventory.build_indexes();
+
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_class("webserver")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(nodes, vec!["node1"]);
+
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_class("base")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(nodes.len(), 2);
+
+        // Non-existent class returns empty
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_class("nonexistent")
+            .map(|n| n.name())
+            .collect();
+        assert!(nodes.is_empty());
+    }
+
+    #[test]
+    fn test_find_nodes_by_environment() {
+        use indoc::indoc;
+
+        const TEST_INVENTORY: &str = indoc!(
+            r#"---
+               ---
+               name: base
+               parameters:
+                   global: true
+               ---
+               name: node1
+               type: node
+               environment: production
+               classes:
+                   - base
+               ---
+               name: node2
+               type: node
+               environment: staging
+               classes:
+                   - base
+               ---
+               name: node3
+               type: node
+               environment: production
+               classes:
+                   - base
+               "#
+        );
+
+        let inventory = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::None)
+            .expect("failed to parse");
+
+        // Without indexes, should still work (linear scan)
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_environment("production")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(nodes.len(), 2, "should find 2 production nodes");
+        assert!(nodes.contains(&"node1"), "should contain node1");
+        assert!(nodes.contains(&"node3"), "should contain node3");
+
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_environment("staging")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(nodes, vec!["node2"]);
+
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_environment("nonexistent")
+            .map(|n| n.name())
+            .collect();
+        assert!(nodes.is_empty());
+    }
+
+    #[test]
+    fn test_find_nodes_by_environment_with_index() {
+        use indoc::indoc;
+
+        const TEST_INVENTORY: &str = indoc!(
+            r#"---
+               ---
+               name: base
+               parameters:
+                   global: true
+               ---
+               name: node1
+               type: node
+               environment: production
+               classes:
+                   - base
+               ---
+               name: node2
+               type: node
+               environment: staging
+               classes:
+                   - base
+               ---
+               name: node3
+               type: node
+               environment: production
+               classes:
+                   - base
+               "#
+        );
+
+        let mut inventory = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::None)
+            .expect("failed to parse");
+
+        // Build indexes explicitly
+        inventory.build_indexes();
+
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_environment("production")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(nodes.len(), 2);
+
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_environment("staging")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(nodes, vec!["node2"]);
+    }
+
+    #[test]
+    fn test_find_nodes_by_resolved_class() {
+        use indoc::indoc;
+
+        const TEST_INVENTORY: &str = indoc!(
+            r#"---
+               ---
+               name: grandparent
+               parameters:
+                   level: grandparent
+               ---
+               name: parent
+               classes:
+                   - grandparent
+               parameters:
+                   level: parent
+               ---
+               name: node1
+               type: node
+               classes:
+                   - parent
+               "#
+        );
+
+        let inventory = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::None)
+            .expect("failed to parse");
+
+        // find_nodes_by_class only checks declared classes, not inherited
+        let declared: Vec<&str> = inventory
+            .find_nodes_by_class("parent")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(
+            declared,
+            vec!["node1"],
+            "node1 declares parent in its class list"
+        );
+
+        let declared_grandparent: Vec<&str> = inventory
+            .find_nodes_by_class("grandparent")
+            .map(|n| n.name())
+            .collect();
+        assert!(
+            declared_grandparent.is_empty(),
+            "no node directly declares grandparent"
+        );
+
+        // find_nodes_by_resolved_class checks the full resolved hierarchy
+        let resolved: Vec<&str> = inventory
+            .find_nodes_by_resolved_class("grandparent")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(
+            resolved,
+            vec!["node1"],
+            "node1 inherits grandparent through parent"
+        );
+    }
+
+    #[test]
+    fn test_search_nodes_case_insensitive() {
+        use indoc::indoc;
+
+        const TEST_INVENTORY: &str = indoc!(
+            r#"---
+               ---
+               name: base
+               parameters:
+                   global: true
+               ---
+               name: Web-Prod-01
+               type: node
+               classes:
+                   - base
+               ---
+               name: db-prod-01
+               type: node
+               classes:
+                   - base
+               ---
+               name: app-staging-01
+               type: node
+               classes:
+                   - base
+               "#
+        );
+
+        let inventory = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::None)
+            .expect("failed to parse");
+
+        // Case-insensitive search
+        let nodes: Vec<&str> = inventory.search_nodes("prod").map(|n| n.name()).collect();
+        assert_eq!(nodes.len(), 2, "should find Web-Prod-01 and db-prod-01");
+        assert!(nodes.contains(&"Web-Prod-01"), "should contain Web-Prod-01");
+        assert!(nodes.contains(&"db-prod-01"), "should contain db-prod-01");
+
+        let nodes: Vec<&str> = inventory.search_nodes("PROD").map(|n| n.name()).collect();
+        assert_eq!(
+            nodes.len(),
+            2,
+            "case-insensitive search should find same results"
+        );
+
+        let nodes: Vec<&str> = inventory
+            .search_nodes("staging")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(nodes, vec!["app-staging-01"]);
+
+        let nodes: Vec<&str> = inventory
+            .search_nodes("nonexistent")
+            .map(|n| n.name())
+            .collect();
+        assert!(nodes.is_empty());
+    }
+
+    #[test]
+    fn test_class_to_nodes_index() {
+        use indoc::indoc;
+
+        const TEST_INVENTORY: &str = indoc!(
+            r#"---
+               ---
+               name: base
+               parameters:
+                   global: true
+               ---
+               name: webserver
+               parameters:
+                   role: web
+               ---
+               name: node1
+               type: node
+               classes:
+                   - base
+                   - webserver
+               ---
+               name: node2
+               type: node
+               classes:
+                   - base
+               "#
+        );
+
+        let mut inventory = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::None)
+            .expect("failed to parse");
+
+        let index = inventory.class_to_nodes();
+        assert_eq!(
+            index.get("webserver"),
+            Some(&vec!["node1".to_string()]),
+            "webserver should map to node1"
+        );
+        assert_eq!(
+            index.get("base").unwrap().len(),
+            2,
+            "base should map to 2 nodes"
+        );
+        assert!(
+            index.get("nonexistent").is_none(),
+            "nonexistent class should not be in index"
+        );
+    }
+
+    #[test]
+    fn test_environment_to_nodes_index() {
+        use indoc::indoc;
+
+        const TEST_INVENTORY: &str = indoc!(
+            r#"---
+               ---
+               name: base
+               parameters:
+                   global: true
+               ---
+               name: node1
+               type: node
+               environment: production
+               classes:
+                   - base
+               ---
+               name: node2
+               type: node
+               environment: staging
+               classes:
+                   - base
+               ---
+               name: node3
+               type: node
+               environment: production
+               classes:
+                   - base
+               "#
+        );
+
+        let mut inventory = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::None)
+            .expect("failed to parse");
+
+        let index = inventory.environment_to_nodes();
+        assert_eq!(
+            index.get("production").unwrap().len(),
+            2,
+            "production should have 2 nodes"
+        );
+        assert_eq!(
+            index.get("staging"),
+            Some(&vec!["node2".to_string()]),
+            "staging should map to node2"
+        );
+    }
+
+    #[test]
+    fn test_build_indexes_idempotent() {
+        use indoc::indoc;
+
+        const TEST_INVENTORY: &str = indoc!(
+            r#"---
+               ---
+               name: base
+               parameters:
+                   global: true
+               ---
+               name: node1
+               type: node
+               classes:
+                   - base
+               "#
+        );
+
+        let mut inventory = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::None)
+            .expect("failed to parse");
+
+        // Calling build_indexes twice should be a no-op
+        inventory.build_indexes();
+        inventory.build_indexes();
+
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_class("base")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(nodes, vec!["node1"]);
+    }
+
+    #[test]
+    fn test_index_invalidation_after_add_node() {
+        use indoc::indoc;
+
+        const TEST_INVENTORY: &str = indoc!(
+            r#"---
+               ---
+               name: base
+               parameters:
+                   global: true
+               ---
+               name: node1
+               type: node
+               classes:
+                   - base
+               "#
+        );
+
+        let mut inventory = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::None)
+            .expect("failed to parse");
+
+        // Build indexes
+        inventory.build_indexes();
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_class("base")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(nodes, vec!["node1"]);
+
+        // Add a new node
+        let new_node = crate::inventory::elements::Node::new("node2".to_string())
+            .classes(vec!["base".to_string()])
+            .build();
+        inventory.add_node(new_node).expect("should add node");
+
+        // Without rebuilding indexes, find_nodes_by_class falls back to linear scan
+        // which should find both nodes
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_class("base")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(
+            nodes.len(),
+            2,
+            "linear scan should find both nodes after add"
+        );
+
+        // Rebuild indexes and verify
+        inventory.build_indexes();
+        let nodes: Vec<&str> = inventory
+            .find_nodes_by_class("base")
+            .map(|n| n.name())
+            .collect();
+        assert_eq!(nodes.len(), 2);
     }
 }

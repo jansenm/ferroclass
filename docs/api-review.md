@@ -94,13 +94,13 @@ and `build_pillar_from()` variants in v0.13.0. These accept a pre-loaded
 original loading-based functions remain as convenience wrappers that
 delegate to the `_from()` variants.
 
-### 3. No query or filter API
+### ~~3. No query or filter API~~ ✅ Done (v0.13.0)
 
-You can only get a node by exact name or iterate all of them. No
-filtering by class membership, environment, or pattern.
-
-**Fix**: Add `find_nodes_by_class()`, `find_nodes_by_environment()`,
-`search_nodes(pattern)` with indexing structures. (Phase 2)
+Added `find_nodes_by_class()`, `find_nodes_by_resolved_class()`,
+`find_nodes_by_environment()`, `search_nodes()`, and `class_names()`.
+Reverse indexes (`class_to_nodes`, `environment_to_nodes`) are built
+lazily via `build_indexes()` and cached. Query methods fall back to
+linear scan if indexes aren't built.
 
 ### ~~4. Private construction APIs~~ ✅ Done
 
@@ -140,11 +140,17 @@ fine and breaking `Options` doesn't unlock new functionality.
 - ✅ Remove `#[pyclass(unsendable)]` from `PyInventory`/`PyNode`
 - ✅ Verify `Inventory: Send + Sync` (static assertions pass)
 
-### Phase 2: Query API
+### Phase 2: Query API ✅ Done (v0.13.0, partial)
 
-- Node search/filter: by class, environment, pattern
-- Incremental merge: don't force full `build_inventory_map()` upfront
-- Progress callbacks or tracing spans for observability
+- ✅ `Inventory::class_names()` — returns `impl Iterator<Item = &str>` in insertion order
+- ✅ `Inventory::find_nodes_by_class(class_name)` — declared class membership, with lazy reverse index
+- ✅ `Inventory::find_nodes_by_resolved_class(class_name)` — resolved class hierarchy (merges each node)
+- ✅ `Inventory::find_nodes_by_environment(environment)` — filter by environment, with lazy reverse index
+- ✅ `Inventory::search_nodes(pattern)` — case-insensitive substring match on node names
+- ✅ `Inventory::build_indexes()` — build reverse indexes (class→nodes, environment→nodes)
+- ✅ `Inventory::class_to_nodes()` — reverse index accessor (class name → node names)
+- ✅ `Inventory::environment_to_nodes()` — reverse index accessor (environment → node names)
+- ⏭️ Deferred: incremental merge, progress callbacks, observability (Phase 2a)
 
 ### Phase 3: Merge Replay
 

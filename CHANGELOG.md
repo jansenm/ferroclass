@@ -38,6 +38,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `!Send + !Sync`). `PyInventory` and `PyNode` no longer need
   `#[pyclass(unsendable)]`. This unblocks async runtimes, web servers, and
   LSP/MCP interfaces that need to share inventory across threads.
+- **Query API for `Inventory`.** New methods for filtering and searching nodes:
+  `find_nodes_by_class()` (declared class membership with reverse index),
+  `find_nodes_by_resolved_class()` (full resolved inheritance chain),
+  `find_nodes_by_environment()` (environment filter with reverse index),
+  `search_nodes()` (case-insensitive substring match on node names), and
+  `class_names()` (iterator over class names). Reverse indexes are built
+  lazily on first access or explicitly via `build_indexes()`. The
+  `class_to_nodes()` and `environment_to_nodes()` methods expose the raw
+  index data. All query methods work without indexes (linear scan fallback)
+  but benefit from them when built.
 
 ### Changed
 
