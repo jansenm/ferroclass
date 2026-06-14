@@ -107,45 +107,45 @@ impl ClassBuilder {
         }
     }
 
-    pub fn applications(&mut self, applications: Applications) -> &mut Self {
+    pub fn applications(mut self, applications: Applications) -> Self {
         self.applications = applications;
         self
     }
 
-    pub fn classes(&mut self, classes: ClassList) -> &mut Self {
+    pub fn classes(mut self, classes: ClassList) -> Self {
         self.classes = classes;
         self
     }
 
-    pub fn environment(&mut self, environment: impl Into<Environment>) -> &mut Self {
+    pub fn environment(mut self, environment: impl Into<Environment>) -> Self {
         self.environment = environment.into();
         self
     }
 
-    pub fn parameters(&mut self, parameters: ParametersType) -> &mut Self {
+    pub fn parameters(mut self, parameters: ParametersType) -> Self {
         self.parameters = parameters;
         self
     }
 
-    pub fn exports(&mut self, exports: ParametersType) -> &mut Self {
+    pub fn exports(mut self, exports: ParametersType) -> Self {
         self.exports = exports;
         self
     }
 
-    pub fn uri(&mut self, uri: impl Into<String>) -> &mut Self {
+    pub fn uri(mut self, uri: impl Into<String>) -> Self {
         self.uri = Some(uri.into());
         self
     }
 
-    pub fn build(&mut self) -> Class {
+    pub fn build(self) -> Class {
         Class {
-            name: self.name.clone(),
-            applications: self.applications.clone(),
-            classes: self.classes.clone(),
-            environment: self.environment.clone(),
-            parameters: self.parameters.clone(),
-            exports: self.exports.clone(),
-            uri: self.uri.clone(),
+            name: self.name,
+            applications: self.applications,
+            classes: self.classes,
+            environment: self.environment,
+            parameters: self.parameters,
+            exports: self.exports,
+            uri: self.uri,
         }
     }
 }

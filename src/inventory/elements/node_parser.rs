@@ -33,13 +33,13 @@ pub(crate) fn parse_node(
     let environment = data
         .environment
         .unwrap_or_else(|| default_environment.clone());
-    let mut builder = Node::new(node_name);
-    builder.classes(data.classes);
-    builder.environment(environment);
-    builder.parameters(data.parameters);
-    builder.exports(data.exports);
-    builder.applications(data.applications);
-    Ok(builder.build())
+    Ok(Node::new(node_name)
+        .classes(data.classes)
+        .environment(environment)
+        .parameters(data.parameters)
+        .exports(data.exports)
+        .applications(data.applications)
+        .build())
 }
 
 #[cfg(test)]
