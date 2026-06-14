@@ -183,11 +183,17 @@ impl Inventory {
         )
     }
 
-    fn add_class(&mut self, class: Class) {
+    /// Add a class to the inventory.
+    ///
+    /// If a class with the same name already exists, it will be replaced.
+    pub fn add_class(&mut self, class: Class) {
         self.classes.insert(class.name().to_string(), class);
     }
 
-    fn add_node(&mut self, node: Node) -> Result<(), Error> {
+    /// Add a node to the inventory.
+    ///
+    /// Returns an error if a node with the same name already exists.
+    pub fn add_node(&mut self, node: Node) -> Result<(), Error> {
         if let Some(existing) = self.nodes.get(node.name()) {
             return Err(Error::DuplicateNodeName {
                 name: node.name().to_string(),
