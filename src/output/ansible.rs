@@ -323,22 +323,25 @@ pub fn inject_classes_and_applications_into_reclass(
     parameters.insert(reclass_key, Value::Hash(Rc::new(reclass_hash)));
 }
 
-/// Build a complete Ansible dynamic inventory from configuration.
+/// Build a complete Ansible dynamic inventory from a pre-loaded inventory.
+///
+/// This is the core logic that works with an already-loaded and configured
+/// [`Inventory`]. Use this when you already have an inventory (e.g., in an
+/// LSP server that keeps one in memory).
 ///
 /// `applications_postfix` is the suffix appended to group names (e.g. `"_grp"`).
 /// `timestamp` is included in the `__reclass__` metadata.
-pub fn build_inventory(
-    config: &Options,
+/// `ignore_failed_node` and `ignore_failed_render` control error handling.
+pub fn build_inventory_from(
+    inventory: &inv::Inventory,
     applications_postfix: &str,
     timestamp: &str,
+    ignore_failed_node: bool,
+    ignore_failed_render: bool,
 ) -> Result<AnsibleInventory, AnsibleInventoryError> {
-    let merge_config = config.build_merge_config();
-    let ignore_failed_node = merge_config.inventory_ignore_failed_node;
-    let ignore_failed_render = merge_config.inventory_ignore_failed_render;
-    let mut inventory = inv::load(&config.storage_options).map_err(AnsibleInventoryError::from)?;
-    inventory.set_class_mappings(config.class_mappings.clone());
-    inventory.set_class_mappings_match_path(config.class_mappings_match_path);
-    inventory.set_merge_config(merge_config);
+    let merge_config = inventory.merge_config();
+    let ignore_failed_node = ignore_failed_node || merge_config.inventory_ignore_failed_node;
+    let ignore_failed_render = ignore_failed_render || merge_config.inventory_ignore_failed_render;
 
     let inv_map = inventory
         .build_inventory_map()
@@ -431,22 +434,52 @@ pub fn build_inventory(
     Ok(AnsibleInventory { groups, hostvars })
 }
 
-/// Build host variables for a single Ansible host.
+/// Build a complete Ansible dynamic inventory from configuration.
+///
+/// Loads the inventory from disk, configures merge settings and class
+/// mappings from the given [`Options`], and produces the full inventory.
+/// See [`build_inventory_from`] for a variant that accepts a pre-loaded
+/// inventory.
+///
+/// `applications_postfix` is the suffix appended to group names (e.g. `"_grp"`).
+/// `timestamp` is included in the `__reclass__` metadata.
+pub fn build_inventory(
+    config: &Options,
+    applications_postfix: &str,
+    timestamp: &str,
+) -> Result<AnsibleInventory, AnsibleInventoryError> {
+    let merge_config = config.build_merge_config();
+    let mut inventory = inv::load(&config.storage_options).map_err(AnsibleInventoryError::from)?;
+    inventory.set_class_mappings(config.class_mappings.clone());
+    inventory.set_class_mappings_match_path(config.class_mappings_match_path);
+    inventory.set_merge_config(merge_config);
+
+    build_inventory_from(
+        &inventory,
+        applications_postfix,
+        timestamp,
+        config.inventory_ignore_failed_node,
+        config.inventory_ignore_failed_render,
+    )
+}
+
+/// Build host variables for a single Ansible host from a pre-loaded inventory.
+///
+/// This is the core logic that works with an already-loaded and configured
+/// [`Inventory`]. Use this when you already have an inventory (e.g., in an
+/// LSP server that keeps one in memory).
 ///
 /// Merges the node, resolves inventory queries, and returns the
 /// `AnsibleNodeInfo` containing parameters, classes, applications, and
 /// `__reclass__` metadata.
-pub fn build_host_vars(
-    config: &Options,
+pub fn build_host_vars_from(
+    inventory: &inv::Inventory,
     hostname: &str,
     timestamp: &str,
+    ignore_failed_render: bool,
 ) -> Result<AnsibleNodeInfo, HostVarsError> {
-    let merge_config = config.build_merge_config();
-    let ignore_failed_render = merge_config.inventory_ignore_failed_render;
-    let mut inventory = inv::load(&config.storage_options).map_err(HostVarsError::from)?;
-    inventory.set_class_mappings(config.class_mappings.clone());
-    inventory.set_class_mappings_match_path(config.class_mappings_match_path);
-    inventory.set_merge_config(merge_config);
+    let ignore_failed_render =
+        ignore_failed_render || inventory.merge_config().inventory_ignore_failed_render;
 
     let _node = inventory
         .get_node(hostname)
@@ -512,6 +545,31 @@ pub fn build_host_vars(
         parameters,
         exports,
     })
+}
+
+/// Build host variables for a single Ansible host.
+///
+/// Loads the inventory from disk, configures merge settings and class
+/// mappings from the given [`Options`], and produces the host variables.
+/// See [`build_host_vars_from`] for a variant that accepts a pre-loaded
+/// inventory.
+pub fn build_host_vars(
+    config: &Options,
+    hostname: &str,
+    timestamp: &str,
+) -> Result<AnsibleNodeInfo, HostVarsError> {
+    let merge_config = config.build_merge_config();
+    let mut inventory = inv::load(&config.storage_options).map_err(HostVarsError::from)?;
+    inventory.set_class_mappings(config.class_mappings.clone());
+    inventory.set_class_mappings_match_path(config.class_mappings_match_path);
+    inventory.set_merge_config(merge_config);
+
+    build_host_vars_from(
+        &inventory,
+        hostname,
+        timestamp,
+        config.inventory_ignore_failed_render,
+    )
 }
 
 #[cfg(test)]

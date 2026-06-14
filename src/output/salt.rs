@@ -151,18 +151,21 @@ fn inject_salt_reclass_fields(
     parameters.insert(reclass_key, Value::Hash(Rc::new(reclass_hash)));
 }
 
-/// Build Salt top data from configuration.
+/// Build Salt top data from a pre-loaded inventory.
+///
+/// This is the core logic that works with an already-loaded and configured
+/// [`Inventory`]. Use this when you already have an inventory (e.g., in an
+/// LSP server that keeps one in memory).
 ///
 /// Returns a [`TopData`] mapping each environment to its nodes and
 /// their state lists.
-pub fn build_top(config: &Options) -> Result<TopData, TopError> {
-    let merge_config = config.build_merge_config();
-    let ignore_failed_node = merge_config.inventory_ignore_failed_node;
-    let ignore_failed_render = merge_config.inventory_ignore_failed_render;
-    let mut inventory = inv::load(&config.storage_options).map_err(TopError::from)?;
-    inventory.set_class_mappings(config.class_mappings.clone());
-    inventory.set_class_mappings_match_path(config.class_mappings_match_path);
-    inventory.set_merge_config(merge_config);
+pub fn build_top_from(
+    inventory: &inv::Inventory,
+    ignore_failed_node: bool,
+    ignore_failed_render: bool,
+) -> Result<TopData, TopError> {
+    let ignore_failed_node = ignore_failed_node || inventory.merge_config().inventory_ignore_failed_node;
+    let ignore_failed_render = ignore_failed_render || inventory.merge_config().inventory_ignore_failed_render;
 
     let inv_map = inventory.build_inventory_map().map_err(TopError::from)?;
 
@@ -217,17 +220,41 @@ pub fn build_top(config: &Options) -> Result<TopData, TopError> {
     Ok(TopData { environments })
 }
 
-/// Build Salt pillar data for a single minion.
+/// Build Salt top data from configuration.
 ///
-/// Merges the node, resolves inventory queries, and returns the
-/// host variables including `__reclass__` metadata.
-pub fn build_pillar(config: &Options, minion_id: &str) -> Result<HostVars, PillarError> {
+/// Loads the inventory from disk, configures merge settings and class
+/// mappings from the given [`Options`], and produces the top data.
+/// See [`build_top_from`] for a variant that accepts a pre-loaded
+/// inventory.
+pub fn build_top(config: &Options) -> Result<TopData, TopError> {
     let merge_config = config.build_merge_config();
-    let ignore_failed_render = merge_config.inventory_ignore_failed_render;
-    let mut inventory = inv::load(&config.storage_options).map_err(PillarError::from)?;
+    let mut inventory = inv::load(&config.storage_options).map_err(TopError::from)?;
     inventory.set_class_mappings(config.class_mappings.clone());
     inventory.set_class_mappings_match_path(config.class_mappings_match_path);
     inventory.set_merge_config(merge_config);
+
+    build_top_from(
+        &inventory,
+        config.inventory_ignore_failed_node,
+        config.inventory_ignore_failed_render,
+    )
+}
+
+/// Build Salt pillar data for a single minion from a pre-loaded inventory.
+///
+/// This is the core logic that works with an already-loaded and configured
+/// [`Inventory`]. Use this when you already have an inventory (e.g., in an
+/// LSP server that keeps one in memory).
+///
+/// Merges the node, resolves inventory queries, and returns the
+/// host variables including `__reclass__` metadata.
+pub fn build_pillar_from(
+    inventory: &inv::Inventory,
+    minion_id: &str,
+    ignore_failed_render: bool,
+) -> Result<HostVars, PillarError> {
+    let ignore_failed_render =
+        ignore_failed_render || inventory.merge_config().inventory_ignore_failed_render;
 
     let _node = inventory
         .get_node(minion_id)
@@ -288,6 +315,26 @@ pub fn build_pillar(config: &Options, minion_id: &str) -> Result<HostVars, Pilla
     );
 
     Ok(HostVars { parameters })
+}
+
+/// Build Salt pillar data for a single minion.
+///
+/// Loads the inventory from disk, configures merge settings and class
+/// mappings from the given [`Options`], and produces the pillar data.
+/// See [`build_pillar_from`] for a variant that accepts a pre-loaded
+/// inventory.
+pub fn build_pillar(config: &Options, minion_id: &str) -> Result<HostVars, PillarError> {
+    let merge_config = config.build_merge_config();
+    let mut inventory = inv::load(&config.storage_options).map_err(PillarError::from)?;
+    inventory.set_class_mappings(config.class_mappings.clone());
+    inventory.set_class_mappings_match_path(config.class_mappings_match_path);
+    inventory.set_merge_config(merge_config);
+
+    build_pillar_from(
+        &inventory,
+        minion_id,
+        config.inventory_ignore_failed_render,
+    )
 }
 
 #[cfg(test)]
