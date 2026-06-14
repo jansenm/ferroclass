@@ -462,3 +462,126 @@ first N results. If the caller needs a `Vec`, they can `.collect()`.
 | `StorageOptionsTrait` clones       | `fn parameter_key_style() -> ParameterKeyStyle` | `fn parameter_key_style() -> &ParameterKeyStyle` | Avoids clone per call |
 | `merge_node()` aborts on error     | `Result<Node, Error>`                | `Result<MergeResult, FatalError>`      | LSP needs all diagnostics |
 | `Value` uses `Rc`                   | `!Send + !Sync`                      | `Arc` → `Send + Sync`                  | Thread safety             |
+
+### Caching and indexing — optional, not in the library core
+
+The CLI does not need caching. It loads an inventory, merges nodes,
+outputs results, and exits. Caching would add complexity with no benefit
+for this workflow.
+
+Caching and indexing are concerns **only for long-running processes**
+(LSP, web server, MCP server) that query the same inventory repeatedly.
+The library should provide the building blocks, but caching must remain
+optional and never be required for basic use.
+
+#### What we don't need
+
+**No external crate dependencies for caching.** The ferroclass data model
+(structured key-value hierarchies) doesn't map well to generic solutions:
+
+- **Embedded databases** (sled, redb, SQLite via rusqlite) — These are
+  designed for unstructured or flat key-value data. Our data is a
+  `LinkedHashMap<String, Node>` with recursive `Value` trees. Serializing
+  to bytes and deserializing on startup is probably similar speed to just
+  re-parsing the YAML files. Not worth the dependency or complexity.
+
+- **Full-text search engines** (tantivy, meilisearch) — These index
+  unstructured text for fuzzy matching. Our data is structured: we know
+  every parameter key and value. A simple `HashMap` reverse index gives
+  exact-match queries in nanoseconds without a search engine.
+
+- **Cache libraries** (moka, cached, lru) — These add generational
+  eviction policies and TTL logic that we don't need. Our invalidation is
+  simple: when a file changes on disk, reload. A `HashMap` behind
+  `Arc<RwLock<>>` (after the Rc→Arc migration) is simpler and sufficient.
+
+#### What we do need — simple data structures in `Inventory`
+
+These are all plain `HashMap`-based indexes that can be built during
+`load()` or `build_inventory_map()`. No crate required:
+
+```rust
+pub struct Inventory {
+    // ... existing fields ...
+
+    // --- Caching (optional, only for long-running processes) ---
+
+    /// Cache of merged nodes. Built lazily or on demand.
+    /// Cleared when source files change.
+    /// Not used by the CLI.
+    merged_nodes: HashMap<String, Node>,
+
+    /// Reverse index: class name → node names that include it.
+    /// Used for "which nodes depend on this class?" queries.
+    /// Built during load() or build_index().
+    class_to_nodes: HashMap<String, Vec<String>>,
+
+    /// Reverse index: parameter key → node names that have this key.
+    /// Used for "find all nodes with parameter X" queries.
+    /// Built during load() or build_index().
+    param_key_to_nodes: HashMap<String, Vec<String>>,
+}
+```
+
+**The CLI never touches these fields.** They're built on demand by the
+LSP, MCP, or Explorer when they call `build_index()` or query methods
+that trigger lazy construction.
+
+#### Incremental updates — the real performance win
+
+For the LSP, the key optimization isn't caching — it's **not reloading
+everything when one file changes**. The pattern is:
+
+1. File change detected by `notify` crate
+2. Re-parse only the changed YAML file
+3. Update the affected `Class` or `Node` in the `Inventory`
+4. Re-merge only the nodes that depend on the changed class (using
+   `class_to_nodes` index)
+5. Push updated diagnostics
+
+This requires `Inventory` to support updating a single class or node
+without reloading from scratch — which means making `add_node()` and
+`add_class()` public (already planned in Phase 0).
+
+#### When to consider external crates
+
+If someone has a 10,000+ node inventory where load time becomes seconds
+instead of milliseconds, then consider:
+
+- **sled or redb** for persistent storage of parsed YAML (skip parsing
+  on cold start) — but only if profiling shows parsing is the bottleneck
+- **tantivy** for full-text search across parameter values — but only
+  if the `HashMap` reverse index isn't sufficient for some use case
+
+For v1, plain `HashMap` indexes are simpler, faster to implement, and
+easier to debug. Add crate dependencies only when profiling proves they're
+needed.
+
+#### Principle: caching is a layer above the library
+
+The library provides `Inventory` with optional index fields. The caching
+logic lives in the interface layer (LSP, web server, MCP), not in the
+library itself:
+
+```
+┌─────────────────────────────────────────────┐
+│  LSP / Web / MCP (caching layer)            │
+│                                              │
+│  Arc<RwLock<Inventory>>                      │
+│  ┌────────────────────────────────────────┐  │
+│  │  load() → Inventory                    │  │
+│  │  file change → reload() or update()    │  │
+│  │  query → merged_nodes cache (hit/miss) │  │
+│  └────────────────────────────────────────┘  │
+│                                              │
+│  CLI (no caching)                            │
+│  ┌────────────────────────────────────────┐  │
+│  │  load() → merge_node() → output → exit │  │
+│  └────────────────────────────────────────┘  │
+└─────────────────────────────────────────────┘
+```
+
+The CLI path stays exactly as it is. The caching layer wraps `Inventory`
+and adds `Arc<RwLock<>>`, index building, and cache invalidation. The
+library doesn't know about caching — it just provides the data structures
+and merge operations.
