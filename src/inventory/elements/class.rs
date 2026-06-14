@@ -54,7 +54,7 @@ impl Class {
         &mut self.exports
     }
 
-    pub fn name(&self) -> &String {
+    pub fn name(&self) -> &str {
         &self.name
     }
 
