@@ -4,7 +4,7 @@
 use crate::inventory::options::MergeConfig;
 use crate::inventory::value::{Hash, Key, Value};
 use snafu::Snafu;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -56,7 +56,7 @@ pub fn merge(
 
             let mut result = (**base_arr).clone();
             result.extend(other_arr.iter().cloned());
-            Ok(Value::Array(Rc::new(result)))
+            Ok(Value::Array(Arc::new(result)))
         }
         (Value::Hash(base_hash), Value::Hash(other_hash)) => {
             merge_hash(base_hash, other_hash, config, path)
@@ -64,49 +64,49 @@ pub fn merge(
         (Value::DeferredMerge(base_values), Value::DeferredMerge(other_values)) => {
             let mut result = (**base_values).clone();
             result.extend(other_values.iter().cloned());
-            Ok(Value::DeferredMerge(Rc::new(result)))
+            Ok(Value::DeferredMerge(Arc::new(result)))
         }
         (Value::DeferredMerge(base_values), _) => {
             let mut result = (**base_values).clone();
             result.push(other.clone());
-            Ok(Value::DeferredMerge(Rc::new(result)))
+            Ok(Value::DeferredMerge(Arc::new(result)))
         }
         (_, Value::DeferredMerge(other_values)) => {
             let mut result = vec![base.clone()];
             result.extend(other_values.iter().cloned());
-            Ok(Value::DeferredMerge(Rc::new(result)))
+            Ok(Value::DeferredMerge(Arc::new(result)))
         }
         (Value::Reference(_), _) | (_, Value::Reference(_)) => {
-            Ok(Value::DeferredMerge(Rc::new(vec![
+            Ok(Value::DeferredMerge(Arc::new(vec![
                 base.clone(),
                 other.clone(),
             ])))
         }
         (Value::InvQuery(_), _) | (_, Value::InvQuery(_)) => {
-            Ok(Value::DeferredMerge(Rc::new(vec![
+            Ok(Value::DeferredMerge(Arc::new(vec![
                 base.clone(),
                 other.clone(),
             ])))
         }
         (Value::StringWithInvQuery(_), _) | (_, Value::StringWithInvQuery(_)) => {
-            Ok(Value::DeferredMerge(Rc::new(vec![
+            Ok(Value::DeferredMerge(Arc::new(vec![
                 base.clone(),
                 other.clone(),
             ])))
         }
-        (Value::OverrideMarker(_), _) => Ok(Value::DeferredMerge(Rc::new(vec![
+        (Value::OverrideMarker(_), _) => Ok(Value::DeferredMerge(Arc::new(vec![
             base.clone(),
             other.clone(),
         ]))),
-        (_, Value::OverrideMarker(_)) => Ok(Value::DeferredMerge(Rc::new(vec![
+        (_, Value::OverrideMarker(_)) => Ok(Value::DeferredMerge(Arc::new(vec![
             base.clone(),
             other.clone(),
         ]))),
-        (Value::ConstantMarker(_), _) => Ok(Value::DeferredMerge(Rc::new(vec![
+        (Value::ConstantMarker(_), _) => Ok(Value::DeferredMerge(Arc::new(vec![
             base.clone(),
             other.clone(),
         ]))),
-        (_, Value::ConstantMarker(_)) => Ok(Value::DeferredMerge(Rc::new(vec![
+        (_, Value::ConstantMarker(_)) => Ok(Value::DeferredMerge(Arc::new(vec![
             base.clone(),
             other.clone(),
         ]))),
@@ -151,14 +151,14 @@ fn merge_hash(
     path: &[String],
 ) -> Result<Value, Error> {
     if other.is_empty() {
-        return Ok(Value::Hash(Rc::new(base.clone())));
+        return Ok(Value::Hash(Arc::new(base.clone())));
     }
     if base.is_empty() {
         if config.feature_value_override || config.feature_value_constant {
             let processed = process_special_keys(other, config);
-            Ok(Value::Hash(Rc::new(processed)))
+            Ok(Value::Hash(Arc::new(processed)))
         } else {
-            Ok(Value::Hash(Rc::new(other.clone())))
+            Ok(Value::Hash(Arc::new(other.clone())))
         }
     } else {
         let mut result = base.clone();
@@ -183,7 +183,7 @@ fn merge_hash(
                     };
                     result.insert(
                         effective_key,
-                        Value::OverrideMarker(Rc::new(override_value)),
+                        Value::OverrideMarker(Arc::new(override_value)),
                     );
                 }
                 KeyAction::Constant => {
@@ -196,7 +196,7 @@ fn merge_hash(
                     };
                     result.insert(
                         effective_key,
-                        Value::ConstantMarker(Rc::new(constant_value)),
+                        Value::ConstantMarker(Arc::new(constant_value)),
                     );
                 }
                 KeyAction::Normal => {
@@ -209,7 +209,7 @@ fn merge_hash(
                 }
             }
         }
-        Ok(Value::Hash(Rc::new(result)))
+        Ok(Value::Hash(Arc::new(result)))
     }
 }
 
@@ -250,7 +250,7 @@ pub(crate) fn merge_hash_direct(
                     };
                     result.insert(
                         effective_key,
-                        Value::OverrideMarker(Rc::new(override_value)),
+                        Value::OverrideMarker(Arc::new(override_value)),
                     );
                 }
                 KeyAction::Constant => {
@@ -263,7 +263,7 @@ pub(crate) fn merge_hash_direct(
                     };
                     result.insert(
                         effective_key,
-                        Value::ConstantMarker(Rc::new(constant_value)),
+                        Value::ConstantMarker(Arc::new(constant_value)),
                     );
                 }
                 KeyAction::Normal => {
@@ -310,10 +310,16 @@ fn process_special_keys(hash: &Hash, config: &MergeConfig) -> Hash {
         let (effective_key, action) = resolve_key(key, config);
         match action {
             KeyAction::Override => {
-                result.insert(effective_key, Value::OverrideMarker(Rc::new(value.clone())));
+                result.insert(
+                    effective_key,
+                    Value::OverrideMarker(Arc::new(value.clone())),
+                );
             }
             KeyAction::Constant => {
-                result.insert(effective_key, Value::ConstantMarker(Rc::new(value.clone())));
+                result.insert(
+                    effective_key,
+                    Value::ConstantMarker(Arc::new(value.clone())),
+                );
             }
             KeyAction::Normal => {
                 result.insert(effective_key, value.clone());
@@ -342,7 +348,7 @@ mod tests {
     }
 
     fn array_val(items: Vec<Value>) -> Value {
-        Value::Array(Rc::new(items))
+        Value::Array(Arc::new(items))
     }
 
     fn hash_val(items: Vec<(String, Value)>) -> Value {
@@ -350,7 +356,7 @@ mod tests {
         for (k, v) in items {
             hash.insert(Key::String(k), v);
         }
-        Value::Hash(Rc::new(hash))
+        Value::Hash(Arc::new(hash))
     }
 
     #[test]
@@ -561,8 +567,8 @@ mod tests {
     #[test]
     fn test_merge_deferred_merge_with_deferred_merge() {
         let config = default_config();
-        let base = Value::DeferredMerge(Rc::new(vec![Value::Integer(1)]));
-        let other = Value::DeferredMerge(Rc::new(vec![Value::Integer(2)]));
+        let base = Value::DeferredMerge(Arc::new(vec![Value::Integer(1)]));
+        let other = Value::DeferredMerge(Arc::new(vec![Value::Integer(2)]));
         let result = merge(&base, &other, &config, &[]).unwrap();
         match result {
             Value::DeferredMerge(values) => {
@@ -575,7 +581,7 @@ mod tests {
     #[test]
     fn test_merge_deferred_merge_with_scalar() {
         let config = default_config();
-        let base = Value::DeferredMerge(Rc::new(vec![Value::Integer(1)]));
+        let base = Value::DeferredMerge(Arc::new(vec![Value::Integer(1)]));
         let other = Value::Integer(2);
         let result = merge(&base, &other, &config, &[]).unwrap();
         match result {
@@ -591,7 +597,7 @@ mod tests {
     fn test_merge_scalar_with_deferred_merge() {
         let config = default_config();
         let base = Value::Integer(1);
-        let other = Value::DeferredMerge(Rc::new(vec![Value::Integer(2)]));
+        let other = Value::DeferredMerge(Arc::new(vec![Value::Integer(2)]));
         let result = merge(&base, &other, &config, &[]).unwrap();
         match result {
             Value::DeferredMerge(values) => {

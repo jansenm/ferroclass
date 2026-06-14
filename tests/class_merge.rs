@@ -6,7 +6,7 @@ use ferroclass::inventory::load_from_yaml_string;
 use ferroclass::inventory::options::ParameterKeyStyle;
 use ferroclass::inventory::value::{Key, Value};
 use indoc::indoc;
-use std::rc::Rc;
+use std::sync::Arc;
 
 fn key_order(a: &Key, b: &Key) -> std::cmp::Ordering {
     format!("{:?}", a).cmp(&format!("{:?}", b))
@@ -76,8 +76,8 @@ fn compare_nodes_by_sorted_params(
     if expected_params.len() != actual_params.len() {
         return Err(vec![ValueMismatch {
             path: "parameters".to_string(),
-            expected: Value::Hash(Rc::new(expected_params.clone())),
-            actual: Value::Hash(Rc::new(actual_params.clone())),
+            expected: Value::Hash(Arc::new(expected_params.clone())),
+            actual: Value::Hash(Arc::new(actual_params.clone())),
         }]);
     }
 
@@ -90,8 +90,8 @@ fn compare_nodes_by_sorted_params(
     if expected_keys != actual_keys {
         return Err(vec![ValueMismatch {
             path: "parameters".to_string(),
-            expected: Value::Hash(Rc::new(expected_params.clone())),
-            actual: Value::Hash(Rc::new(actual_params.clone())),
+            expected: Value::Hash(Arc::new(expected_params.clone())),
+            actual: Value::Hash(Arc::new(actual_params.clone())),
         }]);
     }
 

@@ -22,7 +22,7 @@ use crate::inventory::value::{Environment, Key, ParametersType, Value};
 use crate::storage::file_system;
 use hashlink::LinkedHashMap;
 use snafu::{ResultExt, Snafu};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub(crate) mod applications;
 pub mod class_mapping;
@@ -57,7 +57,7 @@ pub fn create_automatic_parameters(nodename: &str, environment: &Environment) ->
     let mut reclass_hash: ParametersType = LinkedHashMap::new();
     reclass_hash.insert(
         Key::String("name".to_string()),
-        Value::Hash(Rc::new(name_hash)),
+        Value::Hash(Arc::new(name_hash)),
     );
     reclass_hash.insert(
         Key::String("environment".to_string()),
@@ -67,7 +67,7 @@ pub fn create_automatic_parameters(nodename: &str, environment: &Environment) ->
     let mut params: ParametersType = LinkedHashMap::new();
     params.insert(
         Key::String("_reclass_".to_string()),
-        Value::Hash(Rc::new(reclass_hash)),
+        Value::Hash(Arc::new(reclass_hash)),
     );
     params
 }
@@ -497,6 +497,18 @@ fn load_yaml_file(storage_options: &YamlFileStorageOptions) -> Result<Inventory,
 mod tests {
     use super::*;
     use crate::inventory::options::ParameterKeyStyle;
+
+    // Static assertions that core types are Send + Sync.
+    // This is critical for LSP/MCP/Explorer interfaces that need to share
+    // Inventory across threads.
+    fn _assert_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Inventory>();
+        assert_send_sync::<Class>();
+        assert_send_sync::<Node>();
+        assert_send_sync::<Value>();
+        assert_send_sync::<MergeConfig>();
+    }
 
     #[test]
     fn test_create_automatic_parameters_full_name() {
@@ -3792,7 +3804,7 @@ mod tests {
         config.insert(Key::String("debug".to_string()), Value::Boolean(true));
         input_data.insert(
             Key::String("config".to_string()),
-            Value::Hash(Rc::new(config)),
+            Value::Hash(Arc::new(config)),
         );
         inventory.set_input_data(input_data);
 

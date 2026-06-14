@@ -13,10 +13,7 @@ use pyo3::prelude::*;
 ///
 /// Create with [`load`] or [`ferroclass.load`], then query individual
 /// nodes via [`merge_node`].
-///
-/// **This type cannot be sent between threads** because it contains
-/// `Rc`-based value trees. All access is through the Python GIL.
-#[pyclass(name = "Inventory", unsendable)]
+#[pyclass(name = "Inventory")]
 pub struct PyInventory {
     inventory: inv::Inventory,
 }

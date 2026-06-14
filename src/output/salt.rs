@@ -12,7 +12,7 @@ use crate::inventory::value::{Key, Value};
 use hashlink::LinkedHashMap;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use snafu::prelude::*;
-use std::rc::Rc;
+use std::sync::Arc;
 use yaml_rust2::Yaml;
 
 use super::YamlOutput;
@@ -122,7 +122,7 @@ fn inject_salt_reclass_fields(
 ) {
     let reclass_key = Key::String("__reclass__".to_string());
     let mut reclass_hash = match parameters.remove(&reclass_key) {
-        Some(Value::Hash(h)) => Rc::try_unwrap(h).unwrap_or_else(|rc| (*rc).clone()),
+        Some(Value::Hash(h)) => Arc::try_unwrap(h).unwrap_or_else(|rc| (*rc).clone()),
         _ => LinkedHashMap::new(),
     };
     reclass_hash.insert(
@@ -131,13 +131,13 @@ fn inject_salt_reclass_fields(
     );
     reclass_hash.insert(
         Key::String("classes".to_string()),
-        Value::Array(Rc::new(
+        Value::Array(Arc::new(
             classes.iter().map(|s| Value::String(s.clone())).collect(),
         )),
     );
     reclass_hash.insert(
         Key::String("applications".to_string()),
-        Value::Array(Rc::new(
+        Value::Array(Arc::new(
             applications
                 .iter()
                 .map(|s| Value::String(s.clone()))
@@ -148,7 +148,7 @@ fn inject_salt_reclass_fields(
         Key::String("environment".to_string()),
         Value::String(environment.to_string()),
     );
-    parameters.insert(reclass_key, Value::Hash(Rc::new(reclass_hash)));
+    parameters.insert(reclass_key, Value::Hash(Arc::new(reclass_hash)));
 }
 
 /// Build Salt top data from a pre-loaded inventory.
@@ -346,7 +346,7 @@ mod tests {
         reclass_inner.insert(Key::from("name"), Value::String("test".to_string()));
         params.insert(
             Key::from("__reclass__"),
-            Value::Hash(Rc::new(reclass_inner)),
+            Value::Hash(Arc::new(reclass_inner)),
         );
         params.insert(Key::from("hostname"), Value::String("web-01".to_string()));
 
@@ -360,7 +360,7 @@ mod tests {
 
         let reclass = params.get(&Key::from("__reclass__")).unwrap();
         if let Value::Hash(h) = reclass {
-            let h = Rc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
+            let h = Arc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
             assert!(h.contains_key(&Key::from("nodename")));
             assert!(h.contains_key(&Key::from("classes")));
             assert!(h.contains_key(&Key::from("applications")));
@@ -395,7 +395,7 @@ mod tests {
 
         let reclass = params.get(&Key::from("__reclass__")).unwrap();
         if let Value::Hash(h) = reclass {
-            let h = Rc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
+            let h = Arc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
             assert!(h.contains_key(&Key::from("nodename")));
             assert!(h.contains_key(&Key::from("classes")));
             assert!(h.contains_key(&Key::from("applications")));
@@ -415,9 +415,9 @@ mod tests {
             Value::String("web-01.example.com".to_string()),
         );
         name_map.insert(Key::from("short"), Value::String("web-01".to_string()));
-        auto_inner.insert(Key::from("name"), Value::Hash(Rc::new(name_map)));
+        auto_inner.insert(Key::from("name"), Value::Hash(Arc::new(name_map)));
         auto_inner.insert(Key::from("environment"), Value::String("base".to_string()));
-        params.insert(Key::from("_reclass_"), Value::Hash(Rc::new(auto_inner)));
+        params.insert(Key::from("_reclass_"), Value::Hash(Arc::new(auto_inner)));
 
         inject_salt_reclass_fields(
             &mut params,
@@ -432,7 +432,7 @@ mod tests {
 
         let auto_reclass = params.get(&Key::from("_reclass_")).unwrap();
         if let Value::Hash(h) = auto_reclass {
-            let h = Rc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
+            let h = Arc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
             assert!(h.contains_key(&Key::from("name")));
             assert!(h.contains_key(&Key::from("environment")));
             assert!(!h.contains_key(&Key::from("nodename")));
@@ -443,7 +443,7 @@ mod tests {
 
         let adapter_reclass = params.get(&Key::from("__reclass__")).unwrap();
         if let Value::Hash(h) = adapter_reclass {
-            let h = Rc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
+            let h = Arc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
             assert_eq!(
                 h.get(&Key::from("nodename")),
                 Some(&Value::String("web-01.example.com".to_string()))

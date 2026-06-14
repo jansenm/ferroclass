@@ -8,7 +8,7 @@ use crate::inventory::value::{Hash, Key, ReferencePathSegment, Value};
 use crate::inventory::value_merge::merge as value_merge;
 use snafu::Snafu;
 use std::fmt;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -324,7 +324,7 @@ fn interpolate_value_inner(
                 Value::OverrideMarker(rc) => rc,
                 _ => unreachable!(),
             };
-            let mut resolved = Rc::try_unwrap(inner).unwrap_or_else(|rc| (*rc).clone());
+            let mut resolved = Arc::try_unwrap(inner).unwrap_or_else(|rc| (*rc).clone());
             interpolate_value_inner(
                 &mut resolved,
                 parameters,
@@ -340,7 +340,7 @@ fn interpolate_value_inner(
                 Value::ConstantMarker(rc) => rc,
                 _ => unreachable!(),
             };
-            let mut resolved = Rc::try_unwrap(inner).unwrap_or_else(|rc| (*rc).clone());
+            let mut resolved = Arc::try_unwrap(inner).unwrap_or_else(|rc| (*rc).clone());
             interpolate_value_inner(&mut resolved, parameters, config, stack, collector, context)?;
             *value = resolved;
         }
@@ -358,7 +358,7 @@ fn interpolate_deferred_merge(
     context: &InterpolationContext<'_>,
 ) -> Result<(), Error> {
     let inner = match value {
-        Value::DeferredMerge(values) => Rc::make_mut(values),
+        Value::DeferredMerge(values) => Arc::make_mut(values),
         _ => unreachable!("interpolate_deferred_merge called on non-DeferredMerge"),
     };
     let mut output: Option<Value> = None;
@@ -484,7 +484,7 @@ fn interpolate_array(
     context: &InterpolationContext<'_>,
 ) -> Result<(), Error> {
     let arr = match value {
-        Value::Array(arr) => Rc::make_mut(arr),
+        Value::Array(arr) => Arc::make_mut(arr),
         _ => unreachable!("interpolate_array called on non-Array"),
     };
     for item in arr.iter_mut() {
@@ -509,7 +509,7 @@ fn interpolate_hash(
     context: &InterpolationContext<'_>,
 ) -> Result<(), Error> {
     let hash = match value {
-        Value::Hash(hash) => Rc::make_mut(hash),
+        Value::Hash(hash) => Arc::make_mut(hash),
         _ => unreachable!("interpolate_hash called on non-Hash"),
     };
     let mut keys_to_remove: Vec<Key> = Vec::new();
@@ -759,7 +759,7 @@ mod tests {
     #[test]
     fn test_interpolate_nested_reference_path() {
         let inner = make_params(vec![("ip", Value::String("127.0.0.1".to_string()))]);
-        let params = make_params(vec![("host", Value::Hash(Rc::new(inner)))]);
+        let params = make_params(vec![("host", Value::Hash(Arc::new(inner)))]);
         let mut v = Value::Reference(vec![
             ReferencePathSegment::Literal("host".to_string()),
             ReferencePathSegment::Literal("ip".to_string()),
@@ -774,7 +774,7 @@ mod tests {
             ("alpha_two", Value::String("a".to_string())),
             (
                 "beta",
-                Value::Hash(Rc::new(make_params(vec![("a", Value::Integer(99))]))),
+                Value::Hash(Arc::new(make_params(vec![("a", Value::Integer(99))]))),
             ),
         ]);
         let mut v = Value::Reference(vec![
@@ -808,7 +808,7 @@ mod tests {
 
     #[test]
     fn test_interpolate_reference_preserves_type() {
-        let list = Value::Array(Rc::new(vec![Value::Integer(1), Value::Integer(2)]));
+        let list = Value::Array(Arc::new(vec![Value::Integer(1), Value::Integer(2)]));
         let params = make_params(vec![("mylist", list.clone())]);
         let mut v = Value::Reference(vec![ReferencePathSegment::Literal("mylist".to_string())]);
         interpolate(&mut v, &params, &default_config()).unwrap();
@@ -820,14 +820,14 @@ mod tests {
         let one = make_params(vec![("a", Value::Integer(1)), ("b", Value::Integer(2))]);
         let two = make_params(vec![("c", Value::Integer(3)), ("d", Value::Integer(4))]);
         let node_params = make_params(vec![
-            ("one", Value::Hash(Rc::new(one))),
-            ("two", Value::Hash(Rc::new(two))),
+            ("one", Value::Hash(Arc::new(one))),
+            ("two", Value::Hash(Arc::new(two))),
             ("e", Value::Integer(5)),
         ]);
-        let mut v = Value::DeferredMerge(Rc::new(vec![
+        let mut v = Value::DeferredMerge(Arc::new(vec![
             Value::Reference(vec![ReferencePathSegment::Literal("one".to_string())]),
             Value::Reference(vec![ReferencePathSegment::Literal("two".to_string())]),
-            Value::Hash(Rc::new(make_params(vec![("e", Value::Integer(5))]))),
+            Value::Hash(Arc::new(make_params(vec![("e", Value::Integer(5))]))),
         ]));
         interpolate(&mut v, &node_params, &default_config()).unwrap();
         match &v {
@@ -953,7 +953,7 @@ mod tests {
         );
         params.insert(
             Key::String("host".to_string()),
-            Value::Hash(Rc::new({
+            Value::Hash(Arc::new({
                 let mut h = LinkedHashMap::new();
                 h.insert(
                     Key::String("name".to_string()),
@@ -962,7 +962,7 @@ mod tests {
                 h
             })),
         );
-        let mut v = Value::Hash(Rc::new(params));
+        let mut v = Value::Hash(Arc::new(params));
         v.detect_references();
         match &v {
             Value::Hash(h) => {
@@ -982,7 +982,7 @@ mod tests {
             ("ip-address", Value::String("127.0.0.1".to_string())),
         ]);
         let params = make_params(vec![
-            ("host", Value::Hash(Rc::new(host_hash))),
+            ("host", Value::Hash(Arc::new(host_hash))),
             (
                 "motd",
                 Value::StringWithReference(vec![
@@ -999,7 +999,7 @@ mod tests {
                 ]),
             ),
         ]);
-        let mut value = Value::Hash(Rc::new(params.clone()));
+        let mut value = Value::Hash(Arc::new(params.clone()));
         interpolate(&mut value, &params, &default_config()).unwrap();
         match &value {
             Value::Hash(h) => {
@@ -1051,8 +1051,8 @@ mod tests {
         let alpha = make_params(vec![("two", Value::String("a".to_string()))]);
         let beta = make_params(vec![("a", Value::Integer(99))]);
         let params = make_params(vec![
-            ("alpha", Value::Hash(Rc::new(alpha))),
-            ("beta", Value::Hash(Rc::new(beta))),
+            ("alpha", Value::Hash(Arc::new(alpha))),
+            ("beta", Value::Hash(Arc::new(beta))),
             (
                 "one",
                 Value::Reference(vec![
@@ -1072,8 +1072,8 @@ mod tests {
     #[test]
     fn test_lookup_path_deep() {
         let inner = make_params(vec![("deep", Value::String("found".to_string()))]);
-        let middle = make_params(vec![("inner", Value::Hash(Rc::new(inner)))]);
-        let params = make_params(vec![("outer", Value::Hash(Rc::new(middle)))]);
+        let middle = make_params(vec![("inner", Value::Hash(Arc::new(inner)))]);
+        let params = make_params(vec![("outer", Value::Hash(Arc::new(middle)))]);
         let result = lookup_path("outer:inner:deep", &params);
         assert_eq!(result, Some(&Value::String("found".to_string())));
     }
@@ -1098,7 +1098,7 @@ mod tests {
             ("firstname", Value::String("Jane".to_string())),
             ("lastname", Value::String("Doe".to_string())),
         ]);
-        let params = make_params(vec![("person", Value::Hash(Rc::new(person)))]);
+        let params = make_params(vec![("person", Value::Hash(Arc::new(person)))]);
         let mut v = Value::StringWithReference(vec![
             ReferencePart::Literal("Hello ".to_string()),
             ReferencePart::Reference(vec![
@@ -1122,13 +1122,13 @@ mod tests {
             ("lastname", Value::String("Doe".to_string())),
         ]);
         let params = make_params(vec![
-            ("person", Value::Hash(Rc::new(person_hash))),
+            ("person", Value::Hash(Arc::new(person_hash))),
             (
                 "greeting",
                 Value::String("Hello ${person:firstname} ${person:lastname}".to_string()),
             ),
         ]);
-        let mut v = Value::Hash(Rc::new(params.clone()));
+        let mut v = Value::Hash(Arc::new(params.clone()));
         v.detect_references();
         interpolate(&mut v, &params, &default_config()).unwrap();
         match &v {
@@ -1194,8 +1194,10 @@ mod tests {
             ..MergeConfig::default()
         };
         let base_dict = make_params(vec![("key", Value::String("value".to_string()))]);
-        let mut v =
-            Value::DeferredMerge(Rc::new(vec![Value::Hash(Rc::new(base_dict)), Value::Null]));
+        let mut v = Value::DeferredMerge(Arc::new(vec![
+            Value::Hash(Arc::new(base_dict)),
+            Value::Null,
+        ]));
         let params = make_params(vec![]);
         let result = interpolate(&mut v, &params, &config);
         assert!(result.is_err());
@@ -1216,8 +1218,8 @@ mod tests {
             allow_none_override: false,
             ..MergeConfig::default()
         };
-        let base_list = Value::Array(Rc::new(vec![Value::Integer(1)]));
-        let mut v = Value::DeferredMerge(Rc::new(vec![base_list, Value::Null]));
+        let base_list = Value::Array(Arc::new(vec![Value::Integer(1)]));
+        let mut v = Value::DeferredMerge(Arc::new(vec![base_list, Value::Null]));
         let params = make_params(vec![]);
         let result = interpolate(&mut v, &params, &config);
         assert!(result.is_err());
@@ -1238,8 +1240,8 @@ mod tests {
             ..MergeConfig::default()
         };
         let base_dict = make_params(vec![("key", Value::String("value".to_string()))]);
-        let mut v = Value::DeferredMerge(Rc::new(vec![
-            Value::Hash(Rc::new(base_dict)),
+        let mut v = Value::DeferredMerge(Arc::new(vec![
+            Value::Hash(Arc::new(base_dict)),
             Value::String("override".to_string()),
         ]));
         let params = make_params(vec![]);
@@ -1261,8 +1263,8 @@ mod tests {
             allow_none_override: false,
             ..MergeConfig::default()
         };
-        let base_list = Value::Array(Rc::new(vec![Value::Integer(1)]));
-        let mut v = Value::DeferredMerge(Rc::new(vec![
+        let base_list = Value::Array(Arc::new(vec![Value::Integer(1)]));
+        let mut v = Value::DeferredMerge(Arc::new(vec![
             base_list,
             Value::String("override".to_string()),
         ]));
@@ -1286,8 +1288,10 @@ mod tests {
             ..MergeConfig::default()
         };
         let base_dict = make_params(vec![("key", Value::String("value".to_string()))]);
-        let mut v =
-            Value::DeferredMerge(Rc::new(vec![Value::Hash(Rc::new(base_dict)), Value::Null]));
+        let mut v = Value::DeferredMerge(Arc::new(vec![
+            Value::Hash(Arc::new(base_dict)),
+            Value::Null,
+        ]));
         let params = make_params(vec![]);
         let result = interpolate(&mut v, &params, &config);
         assert!(result.is_ok(), "Expected Ok, got {:?}", result);
@@ -1300,8 +1304,8 @@ mod tests {
             allow_none_override: true,
             ..MergeConfig::default()
         };
-        let base_list = Value::Array(Rc::new(vec![Value::Integer(1)]));
-        let mut v = Value::DeferredMerge(Rc::new(vec![base_list, Value::Null]));
+        let base_list = Value::Array(Arc::new(vec![Value::Integer(1)]));
+        let mut v = Value::DeferredMerge(Arc::new(vec![base_list, Value::Null]));
         let params = make_params(vec![]);
         let result = interpolate(&mut v, &params, &config);
         assert!(result.is_ok(), "Expected Ok, got {:?}", result);
@@ -1316,9 +1320,9 @@ mod tests {
         };
         let base_dict = make_params(vec![("a", Value::Integer(1))]);
         let other_dict = make_params(vec![("b", Value::Integer(2))]);
-        let mut v = Value::DeferredMerge(Rc::new(vec![
-            Value::Hash(Rc::new(base_dict)),
-            Value::Hash(Rc::new(other_dict)),
+        let mut v = Value::DeferredMerge(Arc::new(vec![
+            Value::Hash(Arc::new(base_dict)),
+            Value::Hash(Arc::new(other_dict)),
         ]));
         let params = make_params(vec![]);
         let result = interpolate(&mut v, &params, &config);
@@ -1331,7 +1335,7 @@ mod tests {
             allow_none_override: false,
             ..MergeConfig::default()
         };
-        let mut v = Value::DeferredMerge(Rc::new(vec![
+        let mut v = Value::DeferredMerge(Arc::new(vec![
             Value::String("old".to_string()),
             Value::String("new".to_string()),
         ]));
@@ -1347,8 +1351,10 @@ mod tests {
             allow_none_override: false,
             ..MergeConfig::default()
         };
-        let mut v =
-            Value::DeferredMerge(Rc::new(vec![Value::String("old".to_string()), Value::Null]));
+        let mut v = Value::DeferredMerge(Arc::new(vec![
+            Value::String("old".to_string()),
+            Value::Null,
+        ]));
         let params = make_params(vec![]);
         let result = interpolate(&mut v, &params, &config);
         assert!(result.is_ok(), "Expected Ok, got {:?}", result);
@@ -1364,7 +1370,7 @@ mod tests {
             ..MergeConfig::default()
         };
         let params = make_params(vec![]);
-        let mut v = Value::Hash(Rc::new({
+        let mut v = Value::Hash(Arc::new({
             let mut h = LinkedHashMap::new();
             h.insert(
                 Key::String("alpha".to_string()),
@@ -1389,7 +1395,7 @@ mod tests {
             ..MergeConfig::default()
         };
         let params = make_params(vec![]);
-        let mut v = Value::Hash(Rc::new({
+        let mut v = Value::Hash(Arc::new({
             let mut h = LinkedHashMap::new();
             h.insert(
                 Key::String("alpha".to_string()),
@@ -1418,7 +1424,7 @@ mod tests {
             ..MergeConfig::default()
         };
         let params = make_params(vec![]);
-        let mut v = Value::Hash(Rc::new({
+        let mut v = Value::Hash(Arc::new({
             let mut h = LinkedHashMap::new();
             h.insert(
                 Key::String("alpha".to_string()),
@@ -1451,7 +1457,7 @@ mod tests {
             ..MergeConfig::default()
         };
         let params = make_params(vec![("known", Value::String("hello".to_string()))]);
-        let mut v = Value::Hash(Rc::new({
+        let mut v = Value::Hash(Arc::new({
             let mut h = LinkedHashMap::new();
             h.insert(
                 Key::String("ok".to_string()),
@@ -1494,7 +1500,7 @@ mod tests {
             ),
         ]);
 
-        let mut v1 = Value::Hash(Rc::new(params.clone()));
+        let mut v1 = Value::Hash(Arc::new(params.clone()));
         let result1 = interpolate(&mut v1, &params, &config_grouped);
         assert!(result1.is_err());
         match result1.unwrap_err() {
@@ -1502,7 +1508,7 @@ mod tests {
             other => panic!("Expected CircularReference, got {:?}", other),
         }
 
-        let mut v2 = Value::Hash(Rc::new(params.clone()));
+        let mut v2 = Value::Hash(Arc::new(params.clone()));
         let result2 = interpolate(&mut v2, &params, &config_single);
         assert!(result2.is_err());
         match result2.unwrap_err() {
@@ -1518,7 +1524,7 @@ mod tests {
             ..MergeConfig::default()
         };
         let params = make_params(vec![("known", Value::String("hello".to_string()))]);
-        let mut v = Value::Hash(Rc::new({
+        let mut v = Value::Hash(Arc::new({
             let mut h = LinkedHashMap::new();
             h.insert(
                 Key::String("ok".to_string()),
@@ -1558,7 +1564,7 @@ mod tests {
             ..MergeConfig::default()
         };
         let params = make_params(vec![("known", Value::String("bar".to_string()))]);
-        let mut v = Value::DeferredMerge(Rc::new(vec![
+        let mut v = Value::DeferredMerge(Arc::new(vec![
             Value::Reference(vec![ReferencePathSegment::Literal("missing".to_string())]),
             Value::Reference(vec![ReferencePathSegment::Literal("known".to_string())]),
         ]));
@@ -1578,7 +1584,7 @@ mod tests {
             ..MergeConfig::default()
         };
         let params = make_params(vec![]);
-        let mut v = Value::DeferredMerge(Rc::new(vec![Value::Reference(vec![
+        let mut v = Value::DeferredMerge(Arc::new(vec![Value::Reference(vec![
             ReferencePathSegment::Literal("missing".to_string()),
         ])]));
         let result = interpolate(&mut v, &params, &config);
@@ -1601,7 +1607,7 @@ mod tests {
             ..MergeConfig::default()
         };
         let params = make_params(vec![("known", Value::String("bar".to_string()))]);
-        let mut v = Value::DeferredMerge(Rc::new(vec![
+        let mut v = Value::DeferredMerge(Arc::new(vec![
             Value::Reference(vec![ReferencePathSegment::Literal("missing".to_string())]),
             Value::Reference(vec![ReferencePathSegment::Literal("known".to_string())]),
         ]));
@@ -1620,9 +1626,9 @@ mod tests {
         };
         let inner = make_params(vec![("key", Value::String("val".to_string()))]);
         let params = make_params(vec![]);
-        let mut v = Value::DeferredMerge(Rc::new(vec![
+        let mut v = Value::DeferredMerge(Arc::new(vec![
             Value::Reference(vec![ReferencePathSegment::Literal("missing".to_string())]),
-            Value::Hash(Rc::new(inner)),
+            Value::Hash(Arc::new(inner)),
         ]));
         let result = interpolate(&mut v, &params, &config);
         assert!(
@@ -1638,7 +1644,7 @@ mod tests {
             ..MergeConfig::default()
         };
         let params = make_params(vec![("known", Value::String("final_value".to_string()))]);
-        let mut v = Value::DeferredMerge(Rc::new(vec![
+        let mut v = Value::DeferredMerge(Arc::new(vec![
             Value::Reference(vec![ReferencePathSegment::Literal("missing".to_string())]),
             Value::Reference(vec![ReferencePathSegment::Literal("known".to_string())]),
         ]));
@@ -1658,9 +1664,9 @@ mod tests {
             ..MergeConfig::default()
         };
         let params = make_params(vec![]);
-        let mut v = Value::DeferredMerge(Rc::new(vec![
+        let mut v = Value::DeferredMerge(Arc::new(vec![
             Value::Reference(vec![ReferencePathSegment::Literal("missing".to_string())]),
-            Value::OverrideMarker(Rc::new(Value::String("override".to_string()))),
+            Value::OverrideMarker(Arc::new(Value::String("override".to_string()))),
         ]));
         let result = interpolate(&mut v, &params, &config);
         assert!(

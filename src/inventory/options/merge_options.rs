@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use regex::Regex;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
 pub struct MergeConfig {
@@ -15,7 +16,9 @@ pub struct MergeConfig {
     pub ignore_class_notfound: bool,
     pub ignore_class_notfound_regexp: Vec<String>,
     pub ignore_class_notfound_warning: bool,
-    pub compiled_class_notfound_regexp: Option<Regex>,
+    /// Compiled regex for class-not-found matching, wrapped in `Arc<Mutex<...>>`
+    /// so that `MergeConfig` is `Send + Sync`.
+    pub compiled_class_notfound_regexp: Arc<Mutex<Option<Regex>>>,
     pub group_errors: bool,
     pub ignore_overwritten_missing_references: bool,
     pub inventory_ignore_failed_node: bool,
@@ -35,7 +38,7 @@ impl Default for MergeConfig {
             ignore_class_notfound: false,
             ignore_class_notfound_regexp: vec![".*".to_string()],
             ignore_class_notfound_warning: true,
-            compiled_class_notfound_regexp: None,
+            compiled_class_notfound_regexp: Arc::new(Mutex::new(None)),
             group_errors: true,
             ignore_overwritten_missing_references: true,
             inventory_ignore_failed_node: false,
@@ -126,7 +129,7 @@ impl MergeConfig {
             ignore_class_notfound: false,
             ignore_class_notfound_regexp: vec![".*".to_string()],
             ignore_class_notfound_warning: true,
-            compiled_class_notfound_regexp: None,
+            compiled_class_notfound_regexp: Arc::new(Mutex::new(None)),
             group_errors: true,
             ignore_overwritten_missing_references: true,
             inventory_ignore_failed_node: false,
@@ -137,9 +140,9 @@ impl MergeConfig {
     pub fn compile_regexps(&mut self) {
         if self.ignore_class_notfound && !self.ignore_class_notfound_regexp.is_empty() {
             let pattern = self.ignore_class_notfound_regexp.join("|");
-            self.compiled_class_notfound_regexp = Regex::new(&pattern).ok();
+            *self.compiled_class_notfound_regexp.lock().unwrap() = Regex::new(&pattern).ok();
         } else {
-            self.compiled_class_notfound_regexp = None;
+            *self.compiled_class_notfound_regexp.lock().unwrap() = None;
         }
     }
 
@@ -147,7 +150,8 @@ impl MergeConfig {
         if !self.ignore_class_notfound {
             return false;
         }
-        match &self.compiled_class_notfound_regexp {
+        let guard = self.compiled_class_notfound_regexp.lock().unwrap();
+        match guard.as_ref() {
             Some(re) => re.is_match(class_name),
             None => true,
         }
@@ -214,8 +218,8 @@ mod tests {
             .ignore_class_notfound(true)
             .ignore_class_notfound_regexp(vec!["^foo".to_string(), "^bar".to_string()]);
         config.compile_regexps();
-        assert!(config.compiled_class_notfound_regexp.is_some());
-        let re = config.compiled_class_notfound_regexp.as_ref().unwrap();
+        let guard = config.compiled_class_notfound_regexp.lock().unwrap();
+        let re = guard.as_ref().unwrap();
         assert!(re.is_match("foo-test"));
         assert!(!re.is_match("baz-test"));
     }
@@ -225,7 +229,8 @@ mod tests {
         let mut config =
             MergeConfig::default().ignore_class_notfound_regexp(vec!["^foo".to_string()]);
         config.compile_regexps();
-        assert!(config.compiled_class_notfound_regexp.is_none());
+        let guard = config.compiled_class_notfound_regexp.lock().unwrap();
+        assert!(guard.is_none());
     }
 
     #[test]
@@ -233,7 +238,8 @@ mod tests {
         let mut config = MergeConfig::default().ignore_class_notfound(true);
         config.ignore_class_notfound_regexp = vec![];
         config.compile_regexps();
-        assert!(config.compiled_class_notfound_regexp.is_none());
+        let guard = config.compiled_class_notfound_regexp.lock().unwrap();
+        assert!(guard.is_none());
     }
 
     #[test]
@@ -284,5 +290,11 @@ mod tests {
         assert!(!config.ignore_overwritten_missing_references);
         assert!(config.inventory_ignore_failed_node);
         assert!(config.inventory_ignore_failed_render);
+    }
+
+    #[test]
+    fn test_merge_config_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<MergeConfig>();
     }
 }

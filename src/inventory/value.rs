@@ -13,7 +13,7 @@ use serde::de::{Deserialize, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use snafu::Snafu;
 use std::fmt;
-use std::rc::Rc;
+use std::sync::Arc;
 use yaml_rust2::Yaml as YamlValue;
 
 pub use crate::inventory::types::Environment;
@@ -138,9 +138,9 @@ pub enum ReferencePathSegment {
 ///   blocks future deep-merges
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
-    Array(Rc<Array>),
+    Array(Arc<Array>),
     Boolean(bool),
-    Hash(Rc<Hash>),
+    Hash(Arc<Hash>),
     Integer(i64),
     Null,
     Real(String),
@@ -149,9 +149,9 @@ pub enum Value {
     StringWithReference(Vec<ReferencePart>),
     InvQuery(crate::inventory::inv_query::InvQueryData),
     StringWithInvQuery(Vec<QueryPart>),
-    DeferredMerge(Rc<Vec<Value>>),
-    OverrideMarker(Rc<Value>),
-    ConstantMarker(Rc<Value>),
+    DeferredMerge(Arc<Vec<Value>>),
+    OverrideMarker(Arc<Value>),
+    ConstantMarker(Arc<Value>),
 }
 
 impl From<YamlValue> for Key {
@@ -176,12 +176,12 @@ impl From<YamlValue> for Value {
     fn from(value: YamlValue) -> Self {
         match value {
             YamlValue::Array(value) => {
-                Value::Array(Rc::new(value.into_iter().map(|v| v.into()).collect()))
+                Value::Array(Arc::new(value.into_iter().map(|v| v.into()).collect()))
             }
             YamlValue::Alias(_) => panic!("cannot convert alias to value"),
             YamlValue::BadValue => panic!("cannot convert bad value to value"),
             YamlValue::Boolean(value) => Value::Boolean(value),
-            YamlValue::Hash(value) => Value::Hash(Rc::new(
+            YamlValue::Hash(value) => Value::Hash(Arc::new(
                 value
                     .into_iter()
                     .map(|(k, v)| (k.into(), v.into()))
@@ -310,14 +310,14 @@ impl Value {
 
     pub fn make_array_mut(this: &mut Value) -> &mut Array {
         match this {
-            Value::Array(rc) => Rc::make_mut(rc),
+            Value::Array(rc) => Arc::make_mut(rc),
             _ => panic!("called make_array_mut on non-Array value"),
         }
     }
 
     pub fn make_hash_mut(this: &mut Value) -> &mut Hash {
         match this {
-            Value::Hash(rc) => Rc::make_mut(rc),
+            Value::Hash(rc) => Arc::make_mut(rc),
             _ => panic!("called make_hash_mut on non-Hash value"),
         }
     }
@@ -332,28 +332,28 @@ impl Value {
                 }
             }
             Value::Array(arr) => {
-                let arr = Rc::make_mut(arr);
+                let arr = Arc::make_mut(arr);
                 for item in arr.iter_mut() {
                     item.detect_references();
                 }
             }
             Value::Hash(hash) => {
-                let hash = Rc::make_mut(hash);
+                let hash = Arc::make_mut(hash);
                 for (_k, v) in hash.iter_mut() {
                     v.detect_references();
                 }
             }
             Value::DeferredMerge(values) => {
-                let values = Rc::make_mut(values);
+                let values = Arc::make_mut(values);
                 for item in values.iter_mut() {
                     item.detect_references();
                 }
             }
             Value::OverrideMarker(value) => {
-                Rc::make_mut(value).detect_references();
+                Arc::make_mut(value).detect_references();
             }
             Value::ConstantMarker(value) => {
-                Rc::make_mut(value).detect_references();
+                Arc::make_mut(value).detect_references();
             }
             Value::InvQuery(_) | Value::StringWithInvQuery(_) => {}
             _ => {}
@@ -912,7 +912,7 @@ fn find_closing_brace(s: &str, start: usize) -> Option<usize> {
 
 impl From<Array> for Value {
     fn from(array: Array) -> Value {
-        Value::Array(Rc::new(array))
+        Value::Array(Arc::new(array))
     }
 }
 
@@ -924,7 +924,7 @@ impl From<bool> for Value {
 
 impl From<Hash> for Value {
     fn from(hash: Hash) -> Value {
-        Value::Hash(Rc::new(hash))
+        Value::Hash(Arc::new(hash))
     }
 }
 
@@ -1125,7 +1125,7 @@ impl<'de> Deserialize<'de> for Value {
                 while let Some(value) = seq.next_element()? {
                     values.push(value);
                 }
-                Ok(Value::Array(Rc::new(values)))
+                Ok(Value::Array(Arc::new(values)))
             }
 
             fn visit_map<A>(self, mut map: A) -> Result<Value, A::Error>
@@ -1136,7 +1136,7 @@ impl<'de> Deserialize<'de> for Value {
                 while let Some((key, value)) = map.next_entry()? {
                     hash.insert(key, value);
                 }
-                Ok(Value::Hash(Rc::new(hash)))
+                Ok(Value::Hash(Arc::new(hash)))
             }
         }
 
@@ -1243,7 +1243,7 @@ mod tests {
             Key::String("simple".to_string()),
             Value::String("no refs".to_string()),
         );
-        let mut v = Value::Hash(Rc::new(params));
+        let mut v = Value::Hash(Arc::new(params));
         v.detect_references();
         match &v {
             Value::Hash(h) => {
@@ -1262,7 +1262,7 @@ mod tests {
 
     #[test]
     fn test_detect_references_in_array() {
-        let mut v = Value::Array(Rc::new(vec![
+        let mut v = Value::Array(Arc::new(vec![
             Value::String("${x}".to_string()),
             Value::String("plain".to_string()),
         ]));
@@ -1288,17 +1288,17 @@ mod tests {
             ])
             .has_references()
         );
-        assert!(Value::DeferredMerge(Rc::new(vec![Value::Integer(1)])).has_references());
+        assert!(Value::DeferredMerge(Arc::new(vec![Value::Integer(1)])).has_references());
         assert!(!Value::String("hello".to_string()).has_references());
         assert!(!Value::Integer(42).has_references());
         assert!(
-            Value::Array(Rc::new(vec![Value::Reference(vec![
+            Value::Array(Arc::new(vec![Value::Reference(vec![
                 ReferencePathSegment::Literal("x".to_string()),
             ])]))
             .has_references()
         );
         assert!(
-            Value::Hash(Rc::new({
+            Value::Hash(Arc::new({
                 let mut h = LinkedHashMap::new();
                 h.insert(
                     Key::String("k".to_string()),
@@ -1375,7 +1375,7 @@ mod tests {
 
     #[test]
     fn test_deferred_merge_yaml_value() {
-        let v = Value::DeferredMerge(Rc::new(vec![Value::Integer(1), Value::Integer(2)]));
+        let v = Value::DeferredMerge(Arc::new(vec![Value::Integer(1), Value::Integer(2)]));
         match v.to_yaml_value() {
             YamlValue::Array(arr) => {
                 assert_eq!(arr.len(), 2);
@@ -1537,7 +1537,7 @@ mod tests {
         let mut hash: Hash = LinkedHashMap::new();
         hash.insert(Key::String("k1".to_string()), Value::InvQuery(data1));
         hash.insert(Key::String("k2".to_string()), Value::InvQuery(data2));
-        let v = Value::Hash(Rc::new(hash));
+        let v = Value::Hash(Arc::new(hash));
         assert!(v.ignore_failed_render());
     }
 
@@ -1562,7 +1562,7 @@ mod tests {
         let mut hash: Hash = LinkedHashMap::new();
         hash.insert(Key::String("k1".to_string()), Value::InvQuery(data1));
         hash.insert(Key::String("k2".to_string()), Value::InvQuery(data2));
-        let v = Value::Hash(Rc::new(hash));
+        let v = Value::Hash(Arc::new(hash));
         assert!(!v.ignore_failed_render());
     }
 

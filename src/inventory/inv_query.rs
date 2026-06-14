@@ -5,7 +5,7 @@ use crate::inventory::types::Environment;
 use crate::inventory::value::{Hash, Key, Value};
 use hashlink::LinkedHashMap;
 use snafu::Snafu;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct NodeInventory {
@@ -155,7 +155,7 @@ impl InvQueryData {
     fn evaluate_value(&self, inventory: &InventoryMap, own_environment: &Environment) -> Value {
         let path = match &self.value_path {
             Some(p) => p,
-            None => return Value::Hash(Rc::new(LinkedHashMap::new())),
+            None => return Value::Hash(Arc::new(LinkedHashMap::new())),
         };
 
         let mut results: LinkedHashMap<Key, Value> = LinkedHashMap::new();
@@ -167,7 +167,7 @@ impl InvQueryData {
                 results.insert(Key::String(name.clone()), val.clone());
             }
         }
-        Value::Hash(Rc::new(results))
+        Value::Hash(Arc::new(results))
     }
 
     fn evaluate_test(
@@ -178,12 +178,12 @@ impl InvQueryData {
     ) -> Value {
         let path = match &self.value_path {
             Some(p) => p,
-            None => return Value::Hash(Rc::new(LinkedHashMap::new())),
+            None => return Value::Hash(Arc::new(LinkedHashMap::new())),
         };
 
         let condition = match &self.condition {
             Some(c) => c,
-            None => return Value::Hash(Rc::new(LinkedHashMap::new())),
+            None => return Value::Hash(Arc::new(LinkedHashMap::new())),
         };
 
         let mut results: LinkedHashMap<Key, Value> = LinkedHashMap::new();
@@ -197,7 +197,7 @@ impl InvQueryData {
                 results.insert(Key::String(name.clone()), val.clone());
             }
         }
-        Value::Hash(Rc::new(results))
+        Value::Hash(Arc::new(results))
     }
 
     fn evaluate_list_test(
@@ -208,7 +208,7 @@ impl InvQueryData {
     ) -> Value {
         let condition = match &self.condition {
             Some(c) => c,
-            None => return Value::Array(Rc::new(Vec::new())),
+            None => return Value::Array(Arc::new(Vec::new())),
         };
 
         let mut results: Vec<String> = Vec::new();
@@ -221,7 +221,7 @@ impl InvQueryData {
             }
         }
         results.sort();
-        Value::Array(Rc::new(results.into_iter().map(Value::String).collect()))
+        Value::Array(Arc::new(results.into_iter().map(Value::String).collect()))
     }
 
     fn env_matches(&self, own_environment: &Environment, node_env: &Environment) -> bool {
@@ -1223,14 +1223,14 @@ mod tests {
     fn test_evaluate_nested_path() {
         let node1_exports = make_hash(vec![(
             "host",
-            Value::Hash(Rc::new(make_hash(vec![(
+            Value::Hash(Arc::new(make_hash(vec![(
                 "ip_address",
                 Value::String("10.0.0.1".to_string()),
             )]))),
         )]);
         let node2_exports = make_hash(vec![(
             "host",
-            Value::Hash(Rc::new(make_hash(vec![(
+            Value::Hash(Arc::new(make_hash(vec![(
                 "ip_address",
                 Value::String("10.0.0.2".to_string()),
             )]))),

@@ -198,7 +198,7 @@ impl Serialize for Node {
 impl Node {
     pub fn to_yaml_value(&self) -> YamlValue {
         use hashlink::LinkedHashMap;
-        use std::rc::Rc;
+        use std::sync::Arc;
         let mut map = LinkedHashMap::new();
         map.insert(
             Key::String("environment".to_string()),
@@ -206,7 +206,7 @@ impl Node {
         );
         map.insert(
             Key::String("classes".to_string()),
-            Value::Array(Rc::new(
+            Value::Array(Arc::new(
                 self.classes
                     .iter()
                     .map(|s| Value::String(s.clone()))
@@ -215,7 +215,7 @@ impl Node {
         );
         map.insert(
             Key::String("applications".to_string()),
-            Value::Array(Rc::new(
+            Value::Array(Arc::new(
                 self.applications
                     .as_list()
                     .iter()
@@ -225,18 +225,18 @@ impl Node {
         );
         map.insert(
             Key::String("parameters".to_string()),
-            Value::Hash(Rc::new(self.parameters.clone())),
+            Value::Hash(Arc::new(self.parameters.clone())),
         );
         map.insert(
             Key::String("exports".to_string()),
-            Value::Hash(Rc::new(self.exports.clone())),
+            Value::Hash(Arc::new(self.exports.clone())),
         );
-        Value::Hash(Rc::new(map)).to_yaml_value()
+        Value::Hash(Arc::new(map)).to_yaml_value()
     }
 
     pub fn to_yaml_value_with_reclass(&self, timestamp: &str, sorted: bool) -> YamlValue {
         use hashlink::LinkedHashMap;
-        use std::rc::Rc;
+        use std::sync::Arc;
 
         let mut parameters: ParametersType = LinkedHashMap::new();
 
@@ -278,7 +278,7 @@ impl Node {
         let mut map = LinkedHashMap::new();
         map.insert(
             Key::String("__reclass__".to_string()),
-            Value::Hash(Rc::new(reclass)),
+            Value::Hash(Arc::new(reclass)),
         );
         map.insert(
             Key::String("environment".to_string()),
@@ -286,7 +286,7 @@ impl Node {
         );
         map.insert(
             Key::String("classes".to_string()),
-            Value::Array(Rc::new(
+            Value::Array(Arc::new(
                 self.classes
                     .iter()
                     .map(|s| Value::String(s.clone()))
@@ -295,7 +295,7 @@ impl Node {
         );
         map.insert(
             Key::String("applications".to_string()),
-            Value::Array(Rc::new(
+            Value::Array(Arc::new(
                 self.applications
                     .as_list()
                     .iter()
@@ -305,13 +305,13 @@ impl Node {
         );
         map.insert(
             Key::String("parameters".to_string()),
-            Value::Hash(Rc::new(parameters)),
+            Value::Hash(Arc::new(parameters)),
         );
         map.insert(
             Key::String("exports".to_string()),
-            Value::Hash(Rc::new(self.exports.clone())),
+            Value::Hash(Arc::new(self.exports.clone())),
         );
-        Value::Hash(Rc::new(map)).to_yaml_value_sorted(sorted)
+        Value::Hash(Arc::new(map)).to_yaml_value_sorted(sorted)
     }
 }
 
@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn test_yaml_serialization_node_nested_parameters() {
-        use std::rc::Rc;
+        use std::sync::Arc;
         let mut inner_map: ParametersType = LinkedHashMap::new();
         inner_map.insert(
             Key::String("key1".to_string()),
@@ -426,7 +426,7 @@ mod tests {
         let mut parameters: ParametersType = LinkedHashMap::new();
         parameters.insert(
             Key::String("outer".to_string()),
-            Value::Hash(Rc::new(inner_map)),
+            Value::Hash(Arc::new(inner_map)),
         );
 
         let node = Node::new("nested-node".to_string())

@@ -9,7 +9,7 @@ use crate::inventory::value::{Key, Value};
 use crate::parser::yaml::{Parser, YamlParser};
 use snafu::prelude::*;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::{fs, path};
 
 #[derive(Debug)]
@@ -147,7 +147,7 @@ impl YamlFileRepository {
                         "node" => {
                             let mut value = doc.clone();
                             if let Value::Hash(ref mut hash) = value {
-                                let hash_mut = Rc::make_mut(hash);
+                                let hash_mut = Arc::make_mut(hash);
                                 hash_mut.remove(&name_key);
                                 hash_mut.remove(&Key::String("type".to_string()));
                             }
@@ -167,7 +167,7 @@ impl YamlFileRepository {
                         _ => {
                             let mut value = doc.clone();
                             if let Value::Hash(ref mut hash) = value {
-                                let hash_mut = Rc::make_mut(hash);
+                                let hash_mut = Arc::make_mut(hash);
                                 hash_mut.remove(&name_key);
                             }
                             let class = class_parser::parse_class(

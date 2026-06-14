@@ -13,7 +13,7 @@ use crate::inventory::value::{Key, Value};
 use hashlink::LinkedHashMap;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use snafu::prelude::*;
-use std::rc::Rc;
+use std::sync::Arc;
 use yaml_rust2::Yaml;
 
 use super::{ReclassMap, YamlOutput};
@@ -190,7 +190,7 @@ fn build_reclass_map(
     );
     reclass.insert(
         Key::String("applications".to_string()),
-        Value::Array(Rc::new(
+        Value::Array(Arc::new(
             applications
                 .iter()
                 .map(|s| Value::String(s.clone()))
@@ -199,7 +199,7 @@ fn build_reclass_map(
     );
     reclass.insert(
         Key::String("classes".to_string()),
-        Value::Array(Rc::new(
+        Value::Array(Arc::new(
             classes.iter().map(|s| Value::String(s.clone())).collect(),
         )),
     );
@@ -302,25 +302,25 @@ pub fn inject_classes_and_applications_into_reclass(
 ) {
     let reclass_key = Key::String("__reclass__".to_string());
     let mut reclass_hash = match parameters.remove(&reclass_key) {
-        Some(Value::Hash(h)) => Rc::try_unwrap(h).unwrap_or_else(|rc| (*rc).clone()),
+        Some(Value::Hash(h)) => Arc::try_unwrap(h).unwrap_or_else(|rc| (*rc).clone()),
         _ => LinkedHashMap::new(),
     };
     reclass_hash.insert(
         Key::String("classes".to_string()),
-        Value::Array(Rc::new(
+        Value::Array(Arc::new(
             classes.iter().map(|s| Value::String(s.clone())).collect(),
         )),
     );
     reclass_hash.insert(
         Key::String("applications".to_string()),
-        Value::Array(Rc::new(
+        Value::Array(Arc::new(
             applications
                 .iter()
                 .map(|s| Value::String(s.clone()))
                 .collect(),
         )),
     );
-    parameters.insert(reclass_key, Value::Hash(Rc::new(reclass_hash)));
+    parameters.insert(reclass_key, Value::Hash(Arc::new(reclass_hash)));
 }
 
 /// Build a complete Ansible dynamic inventory from a pre-loaded inventory.
@@ -583,7 +583,7 @@ mod tests {
         reclass_inner.insert(Key::from("name"), Value::String("test".to_string()));
         params.insert(
             Key::from("__reclass__"),
-            Value::Hash(Rc::new(reclass_inner)),
+            Value::Hash(Arc::new(reclass_inner)),
         );
         params.insert(Key::from("hostname"), Value::String("web-01".to_string()));
 
@@ -595,7 +595,7 @@ mod tests {
 
         let reclass = params.get(&Key::from("__reclass__")).unwrap();
         if let Value::Hash(h) = reclass {
-            let h = Rc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
+            let h = Arc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
             assert!(h.contains_key(&Key::from("name")));
             assert!(h.contains_key(&Key::from("classes")));
             assert!(h.contains_key(&Key::from("applications")));
@@ -620,7 +620,7 @@ mod tests {
 
         let reclass = params.get(&Key::from("__reclass__")).unwrap();
         if let Value::Hash(h) = reclass {
-            let h = Rc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
+            let h = Arc::try_unwrap(h.clone()).unwrap_or_else(|rc| (*rc).clone());
             assert!(h.contains_key(&Key::from("classes")));
             assert!(h.contains_key(&Key::from("applications")));
         } else {

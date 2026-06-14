@@ -71,7 +71,7 @@ fn test_load_nodes_and_classes_from_yaml_fs_repo() {
 
     assert_eq!(
         params.get(&Key::String("system".to_string())),
-        Some(&Value::Hash(std::rc::Rc::new({
+        Some(&Value::Hash(std::sync::Arc::new({
             let mut hash = hashlink::LinkedHashMap::new();
             hash.insert(Key::String("is_server".to_string()), Value::Boolean(false));
             hash.insert(Key::String("cpu_count".to_string()), Value::Integer(8));

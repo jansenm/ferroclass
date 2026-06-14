@@ -13,10 +13,7 @@ use pyo3::prelude::*;
 ///
 /// Provides read-only access to the fully-merged parameters, classes,
 /// applications, and environment of a single inventory node.
-///
-/// **This type cannot be sent between threads** because it contains
-/// `Rc`-based value trees. All access is through the Python GIL.
-#[pyclass(name = "Node", unsendable)]
+#[pyclass(name = "Node")]
 pub struct PyNode {
     node: Node,
 }
@@ -59,7 +56,7 @@ impl PyNode {
     #[getter]
     fn parameters(&self, py: Python<'_>) -> PyResult<PyObject> {
         value::value_to_py(
-            &Value::Hash(std::rc::Rc::new(self.node.parameters().clone())),
+            &Value::Hash(std::sync::Arc::new(self.node.parameters().clone())),
             py,
         )
     }
@@ -68,7 +65,7 @@ impl PyNode {
     #[getter]
     fn exports(&self, py: Python<'_>) -> PyResult<PyObject> {
         value::value_to_py(
-            &Value::Hash(std::rc::Rc::new(self.node.exports().clone())),
+            &Value::Hash(std::sync::Arc::new(self.node.exports().clone())),
             py,
         )
     }

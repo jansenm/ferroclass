@@ -103,7 +103,7 @@ pub(super) fn parse_parameters(
                     });
                 }
             }
-            Ok(std::rc::Rc::try_unwrap(hash).unwrap_or_else(|rc| (*rc).clone()))
+            Ok(std::sync::Arc::try_unwrap(hash).unwrap_or_else(|rc| (*rc).clone()))
         }
         Value::Null => Ok(ParametersType::new()),
         _ => Err(Error::InvalidParameterDefinition),

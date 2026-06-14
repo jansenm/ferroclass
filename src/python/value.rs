@@ -10,7 +10,7 @@
 use crate::inventory::value::{Hash, Key, Value};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// Convert a boolean to a Python bool object.
 fn bool_to_py(b: bool, py: Python<'_>) -> PyObject {
@@ -81,7 +81,7 @@ pub fn value_to_py(val: &Value, py: Python<'_>) -> PyResult<PyObject> {
 }
 
 /// Convert a [`Hash`] (ordered map) to a Python `dict`.
-fn hash_to_py(rc_hash: &Rc<Hash>, py: Python<'_>) -> PyResult<PyObject> {
+fn hash_to_py(rc_hash: &Arc<Hash>, py: Python<'_>) -> PyResult<PyObject> {
     let dict = PyDict::new(py);
     for (k, v) in rc_hash.iter() {
         let py_key = key_to_py(k, py)?;
@@ -92,7 +92,7 @@ fn hash_to_py(rc_hash: &Rc<Hash>, py: Python<'_>) -> PyResult<PyObject> {
 }
 
 /// Convert an [`Array`] (Vec<Value>) to a Python `list`.
-fn array_to_py(rc_arr: &Rc<Vec<Value>>, py: Python<'_>) -> PyResult<PyObject> {
+fn array_to_py(rc_arr: &Arc<Vec<Value>>, py: Python<'_>) -> PyResult<PyObject> {
     let list = PyList::empty(py);
     for v in rc_arr.iter() {
         let py_val = value_to_py(v, py)?;
@@ -123,7 +123,7 @@ pub fn parameters_to_pillar_dict(
     // Inject classes and applications into __reclass__
     let reclass_key = Key::String("__reclass__".to_string());
     let mut reclass_hash = match params.remove(&reclass_key) {
-        Some(Value::Hash(h)) => Rc::try_unwrap(h).unwrap_or_else(|rc| (*rc).clone()),
+        Some(Value::Hash(h)) => Arc::try_unwrap(h).unwrap_or_else(|rc| (*rc).clone()),
         _ => Hash::new(),
     };
     reclass_hash.insert(
@@ -132,13 +132,13 @@ pub fn parameters_to_pillar_dict(
     );
     reclass_hash.insert(
         Key::String("classes".to_string()),
-        Value::Array(Rc::new(
+        Value::Array(Arc::new(
             classes.iter().cloned().map(Value::String).collect(),
         )),
     );
     reclass_hash.insert(
         Key::String("applications".to_string()),
-        Value::Array(Rc::new(
+        Value::Array(Arc::new(
             applications.iter().cloned().map(Value::String).collect(),
         )),
     );
@@ -146,9 +146,9 @@ pub fn parameters_to_pillar_dict(
         Key::String("environment".to_string()),
         Value::String(environment.to_string()),
     );
-    params.insert(reclass_key, Value::Hash(Rc::new(reclass_hash)));
+    params.insert(reclass_key, Value::Hash(Arc::new(reclass_hash)));
 
-    value_to_py(&Value::Hash(Rc::new(params)), py)
+    value_to_py(&Value::Hash(Arc::new(params)), py)
 }
 
 /// Convert top data (environment → node → applications) to a Python `dict`.

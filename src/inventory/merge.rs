@@ -12,7 +12,7 @@ use crate::inventory::value::{
 };
 use snafu::Snafu;
 use std::collections::HashSet;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -332,8 +332,8 @@ fn merge_node_impl(
     *result.parameters_mut() = node_acc.parameters;
 
     let params = std::mem::take(result.parameters_mut());
-    let params_rc = Rc::new(params);
-    let mut params_value = Value::Hash(Rc::clone(&params_rc));
+    let params_rc = Arc::new(params);
+    let mut params_value = Value::Hash(Arc::clone(&params_rc));
     let params = &*params_rc;
 
     let params_result = if let Some(inv) = inv_map {
@@ -349,7 +349,7 @@ fn merge_node_impl(
     };
 
     let exports = std::mem::take(&mut node_acc.exports);
-    let mut exports_value = Value::Hash(Rc::new(exports));
+    let mut exports_value = Value::Hash(Arc::new(exports));
     let exports_result = if let Some(inv) = inv_map {
         interpolation::interpolate_with_inventory(
             &mut exports_value,
@@ -390,14 +390,14 @@ fn merge_node_impl(
 
     match params_value {
         Value::Hash(h) => {
-            *result.parameters_mut() = Rc::try_unwrap(h).unwrap_or_else(|rc| (*rc).clone());
+            *result.parameters_mut() = Arc::try_unwrap(h).unwrap_or_else(|rc| (*rc).clone());
         }
         _ => unreachable!("interpolation of Hash should return Hash"),
     }
 
     match exports_value {
         Value::Hash(h) => {
-            *result.exports_mut() = Rc::try_unwrap(h).unwrap_or_else(|rc| (*rc).clone());
+            *result.exports_mut() = Arc::try_unwrap(h).unwrap_or_else(|rc| (*rc).clone());
         }
         _ => unreachable!("interpolation of Hash should return Hash"),
     }

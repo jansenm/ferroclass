@@ -5,7 +5,7 @@ use ferroclass::inventory::merge_values;
 use ferroclass::inventory::options::MergeConfig;
 use ferroclass::inventory::value::{Key, Value};
 use hashlink::LinkedHashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 fn default_config() -> MergeConfig {
     MergeConfig::default()
@@ -32,7 +32,7 @@ fn null_val() -> Value {
 }
 
 fn array_val(items: Vec<Value>) -> Value {
-    Value::Array(Rc::new(items))
+    Value::Array(Arc::new(items))
 }
 
 fn hash_val(items: Vec<(String, Value)>) -> Value {
@@ -40,7 +40,7 @@ fn hash_val(items: Vec<(String, Value)>) -> Value {
     for (k, v) in items {
         hash.insert(Key::String(k), v);
     }
-    Value::Hash(Rc::new(hash))
+    Value::Hash(Arc::new(hash))
 }
 
 #[test]

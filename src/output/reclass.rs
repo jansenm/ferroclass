@@ -13,7 +13,7 @@ use crate::inventory::value::{Key, Value};
 use hashlink::LinkedHashMap;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use snafu::prelude::*;
-use std::rc::Rc;
+use std::sync::Arc;
 use yaml_rust2::Yaml;
 
 use super::{ReclassMap, YamlOutput};
@@ -72,7 +72,7 @@ fn build_reclass_parameter(
     let mut reclass_hash: LinkedHashMap<Key, Value> = LinkedHashMap::new();
     reclass_hash.insert(
         Key::String("name".to_string()),
-        Value::Hash(Rc::new(name_hash)),
+        Value::Hash(Arc::new(name_hash)),
     );
     reclass_hash.insert(
         Key::String("environment".to_string()),
@@ -80,7 +80,7 @@ fn build_reclass_parameter(
     );
     (
         Key::String("_reclass_".to_string()),
-        Value::Hash(Rc::new(reclass_hash)),
+        Value::Hash(Arc::new(reclass_hash)),
     )
 }
 
@@ -510,11 +510,11 @@ impl YamlOutput for NodeInfoOutput {
         );
         map.insert(
             Yaml::String("parameters".to_string()),
-            Value::Hash(std::rc::Rc::new(self.parameters.clone())).to_yaml_value_sorted(sorted),
+            Value::Hash(std::sync::Arc::new(self.parameters.clone())).to_yaml_value_sorted(sorted),
         );
         map.insert(
             Yaml::String("exports".to_string()),
-            Value::Hash(std::rc::Rc::new(self.exports.clone())).to_yaml_value_sorted(sorted),
+            Value::Hash(std::sync::Arc::new(self.exports.clone())).to_yaml_value_sorted(sorted),
         );
         Yaml::Hash(map)
     }

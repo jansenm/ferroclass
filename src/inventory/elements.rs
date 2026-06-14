@@ -87,7 +87,7 @@ mod tests {
 
     #[test]
     fn test_get_parameter_nested() {
-        use std::rc::Rc;
+        use std::sync::Arc;
         let mut inner_map: ParametersType = LinkedHashMap::new();
         inner_map.insert(
             Key::String("ip".to_string()),
@@ -97,7 +97,7 @@ mod tests {
         let mut parameters: ParametersType = LinkedHashMap::new();
         parameters.insert(
             Key::String("host".to_string()),
-            Value::Hash(Rc::new(inner_map)),
+            Value::Hash(Arc::new(inner_map)),
         );
 
         let class = Class::new("test.class".to_string())
@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_get_parameter_deeply_nested() {
-        use std::rc::Rc;
+        use std::sync::Arc;
         let mut level3: ParametersType = LinkedHashMap::new();
         level3.insert(
             Key::String("value".to_string()),
@@ -123,19 +123,19 @@ mod tests {
         let mut level2: ParametersType = LinkedHashMap::new();
         level2.insert(
             Key::String("level3".to_string()),
-            Value::Hash(Rc::new(level3)),
+            Value::Hash(Arc::new(level3)),
         );
 
         let mut level1: ParametersType = LinkedHashMap::new();
         level1.insert(
             Key::String("level2".to_string()),
-            Value::Hash(Rc::new(level2)),
+            Value::Hash(Arc::new(level2)),
         );
 
         let mut parameters: ParametersType = LinkedHashMap::new();
         parameters.insert(
             Key::String("level1".to_string()),
-            Value::Hash(Rc::new(level1)),
+            Value::Hash(Arc::new(level1)),
         );
 
         let class = Class::new("test.class".to_string())
