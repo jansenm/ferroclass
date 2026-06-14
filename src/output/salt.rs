@@ -164,8 +164,10 @@ pub fn build_top_from(
     ignore_failed_node: bool,
     ignore_failed_render: bool,
 ) -> Result<TopData, TopError> {
-    let ignore_failed_node = ignore_failed_node || inventory.merge_config().inventory_ignore_failed_node;
-    let ignore_failed_render = ignore_failed_render || inventory.merge_config().inventory_ignore_failed_render;
+    let ignore_failed_node =
+        ignore_failed_node || inventory.merge_config().inventory_ignore_failed_node;
+    let ignore_failed_render =
+        ignore_failed_render || inventory.merge_config().inventory_ignore_failed_render;
 
     let inv_map = inventory.build_inventory_map().map_err(TopError::from)?;
 
@@ -330,11 +332,7 @@ pub fn build_pillar(config: &Options, minion_id: &str) -> Result<HostVars, Pilla
     inventory.set_class_mappings_match_path(config.class_mappings_match_path);
     inventory.set_merge_config(merge_config);
 
-    build_pillar_from(
-        &inventory,
-        minion_id,
-        config.inventory_ignore_failed_render,
-    )
+    build_pillar_from(&inventory, minion_id, config.inventory_ignore_failed_render)
 }
 
 #[cfg(test)]
