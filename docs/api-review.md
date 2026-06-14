@@ -77,27 +77,22 @@ Loading → Core Inventory → Adapter → Format → String
 
 ## Architectural Constraints
 
-### 1. `Rc<Value>` blocks thread safety
+### ~~1. `Rc<Value>` blocks thread safety~~ ✅ Done
 
-`Value::Hash` and `Value::Array` use `Rc<Hash>` and `Rc<Array>`.
-`Rc` is `!Send + !Sync`, so `Inventory`, `Node`, `Class`, and all their
-contents cannot cross thread boundaries. This blocks async runtimes, web
-servers, and any concurrent access.
+Switched all `Rc<LinkedHashMap>` and `Rc<Array>` to `Arc` counterparts in
+v0.13.0. `MergeConfig::compiled_class_notfound_regexp` changed from
+`Option<Regex>` to `Arc<Mutex<Option<Regex>>>` (Regex is `!Send + !Sync`).
+`PyInventory` and `PyNode` no longer need `#[pyclass(unsendable)]`.
+Static assertions confirm `Inventory`, `Class`, `Node`, `Value`, and
+`MergeConfig` are all `Send + Sync`.
 
-**Fix**: Switch `Rc` → `Arc` throughout `Value`. Mechanical but
-wide-reaching. PyO3's `#[pyclass(unsendable)]` annotation would need to
-stay (or be removed once `Arc` makes `Value` `Send + Sync`).
+### ~~2. Adapter builders are coupled to loading~~ ✅ Done
 
-### 2. Adapter builders are coupled to loading
-
-`build_inventory()`, `build_top()`, `build_pillar()` all call
-`Inventory::load()` internally. You cannot pass a pre-loaded inventory
-to them. Every interface that wants to use an adapter must either
-re-load from disk or duplicate the adapter logic.
-
-**Fix**: Add `build_inventory_from(inventory: &Inventory, opts)` variants
-that accept a pre-loaded inventory. Keep the old loading-based functions
-as convenience wrappers.
+Added `build_inventory_from()`, `build_host_vars_from()`, `build_top_from()`,
+and `build_pillar_from()` variants in v0.13.0. These accept a pre-loaded
+`&Inventory` instead of calling `Inventory::load()` internally. The
+original loading-based functions remain as convenience wrappers that
+delegate to the `_from()` variants.
 
 ### 3. No query or filter API
 
@@ -105,58 +100,45 @@ You can only get a node by exact name or iterate all of them. No
 filtering by class membership, environment, or pattern.
 
 **Fix**: Add `find_nodes_by_class()`, `find_nodes_by_environment()`,
-`search_nodes(pattern)` with indexing structures.
+`search_nodes(pattern)` with indexing structures. (Phase 2)
 
-### 4. Private construction APIs
+### ~~4. Private construction APIs~~ ✅ Done
 
-`Inventory::add_node()` and `add_class()` are private. External code
-cannot build inventories programmatically (e.g., from a REST payload
-or test fixture).
+`Inventory::add_node()` and `add_class()` are now `pub` as of v0.13.0.
 
-**Fix**: Make them `pub`, or add an `InventoryBuilder`.
+### ~~5. Fragmented error types~~ ✅ Done
 
-### 5. Fragmented error types
+Added `ferroclass::Error` at the crate root in v0.13.0, wrapping all
+sub-module errors via `#[snafu(transparent)]`. Sub-module error types
+remain accessible for granular matching.
 
-Separate error types per layer: `inventory::Error`, `merge::Error`,
-`interpolation::Error`, `value_merge::Error`, `file_system::Error`,
-plus adapter-specific errors. No single top-level error type.
-
-**Fix**: Introduce `ferroclass::Error` wrapping all sub-errors, re-exported
-from the crate root. Keep sub-errors accessible via `#[snafu(source)]`.
-
-### 6. CLI concerns mixed into library types
+### 6. CLI concerns mixed into library types (deferred)
 
 `Options.verbose` is a CLI flag that doesn't belong in the library's
 configuration type. `OutputOptions.no_refs` is accepted for CLI
-compatibility but unused.
-
-**Fix**: Split `Options` into `LibraryOptions` (for programmatic use) and
-`CliOptions` (which adds CLI-specific fields). The CLI layer wraps
-`LibraryOptions`.
+compatibility but unused. This is low priority — the current API works
+fine and breaking `Options` doesn't unlock new functionality.
 
 ## Improvement Plan
 
-### Phase 0: API cleanup
+### Phase 0: API cleanup ✅ Done (v0.13.0)
 
-Low-risk changes that unblock everything else:
+- ✅ Make `add_node`/`add_class` public
+- ✅ Decouple adapters from loading: `build_inventory_from()`, `build_host_vars_from()`, `build_top_from()`, `build_pillar_from()`
+- ✅ Unify error types: `ferroclass::Error` at crate root with `#[snafu(transparent)]`
+- ✅ Add `Diagnostic`, `DiagnosticSeverity`, `SourceLocation` types
+- ✅ Change `node_names()` to return `impl Iterator<Item = &str>`
+- ✅ Change `name()` on `Class` and `Node` to return `&str`
+- ✅ Change `NodeBuilder`/`ClassBuilder` to consume `self` (builder pattern)
+- ✅ Change setters to accept `impl Into<String>`
+- ⏭️ Deferred: Split `Options` into library and CLI concerns (low priority)
 
-- Make `add_node`/`add_class` public (or add `InventoryBuilder`)
-- Decouple adapters from loading: add `_from(inventory, opts)` variants
-- Unify error types: single `ferroclass::Error` at crate root
-- Separate `Options` into library and CLI concerns
-- Add `Diagnostic` and `DiagnosticSeverity` types (Error/Warning/Info/Hint)
-- Add `SourceLocation { file, line, col }` to `Class` and `Node` during parsing
-- Change `load()` return type to collect per-file/per-node errors instead of
-  aborting on first error: `Result<DiagnosticReport, FatalError>` where
-  `DiagnosticReport { diagnostics: Vec<Diagnostic>, inventory: Option<Inventory> }`
-- Change `merge_node()` to return `MergeResult` with diagnostics alongside
-  the merged node, so missing classes produce warnings instead of aborting
+### Phase 1: Thread safety ✅ Done (v0.13.0)
 
-### Phase 1: Thread safety
-
-- Switch `Rc` → `Arc` in `Value` variants
-- Remove `#[pyclass(unsendable)]` from `PyInventory`/`PyNode`
-- Verify `Inventory: Send + Sync`
+- ✅ Switch `Rc` → `Arc` in `Value` variants (~200 sites across 16 files)
+- ✅ `MergeConfig::compiled_class_notfound_regexp` → `Arc<Mutex<Option<Regex>>>`
+- ✅ Remove `#[pyclass(unsendable)]` from `PyInventory`/`PyNode`
+- ✅ Verify `Inventory: Send + Sync` (static assertions pass)
 
 ### Phase 2: Query API
 
@@ -266,11 +248,11 @@ above, but the order matters. From the analysis in `docs/interfaces.md`:
    feature but requires significant UI investment. Depends on Phases 0-3.
 
 ```
-Phase 0 (API cleanup + diagnostics) ──┐
-Phase 1 (thread safety)               ├── LSP v1
-Phase 2 (query API + error collection) ┘
-Phase 3 (merge replay) ─────────────────── MCP v1
-Phase 4 (Explorer) ────────────────────── TUI + Web UI
+Phase 0 (API cleanup + diagnostics) ✅ Done ──┐
+Phase 1 (thread safety) ✅ Done                 ├── LSP v1
+Phase 2 (query API + error collection) ────────┘
+Phase 3 (merge replay) ────────────────────────── MCP v1
+Phase 4 (Explorer) ────────────────────────────── TUI + Web UI
 ```
 
 ## API Design Principles
@@ -290,10 +272,7 @@ The right choice depends on the lifecycle:
   just reading from the inventory; they shouldn't pay for cloning.
 
   ```rust
-  // Current: allocates a Vec<String> and clones every key on every call
-  pub fn node_names(&self) -> Vec<String>
-
-  // Preferred: borrows, zero allocation
+  // Done (v0.13.0): borrows, zero allocation
   pub fn node_names(&self) -> impl Iterator<Item = &str>
   ```
 
@@ -304,10 +283,7 @@ The right choice depends on the lifecycle:
   `impl Into<String>` callers should all work without forced allocation:
 
   ```rust
-  // Current: forces allocation even when caller has a &str
-  pub fn set_uri(&mut self, uri: String)
-
-  // Preferred: borrows when possible, owns when needed
+  // Done (v0.13.0): borrows when possible, owns when needed
   pub fn set_uri(&mut self, uri: impl Into<String>)
   ```
 
@@ -315,10 +291,7 @@ The right choice depends on the lifecycle:
   type and doesn't coerce as nicely. `&str` is the idiomatic Rust choice:
 
   ```rust
-  // Current: exposes interior type
-  pub fn name(&self) -> &String
-
-  // Preferred: idiomatic, coerces to &str, &String, etc.
+  // Done (v0.13.0): idiomatic, coerces to &str, &String, etc.
   pub fn name(&self) -> &str
   ```
 
@@ -331,26 +304,18 @@ The right choice depends on the lifecycle:
   pub fn load(options: &StorageOptions) -> Result<Inventory, Error>
   ```
 
-### Consume builders, don't clone them
+### Consume builders, don't clone them ✅
 
 The builder pattern in Rust should consume `self`, not borrow `&mut self`.
-The current `NodeBuilder` and `ClassBuilder` take `&mut self`, which forces
-every `build()` call to clone every field:
+This was fixed in v0.13.0 — `NodeBuilder` and `ClassBuilder` now take
+`self` instead of `&mut self`:
 
 ```rust
-// Current: &mut self means build() must clone every field
-let builder = Node::new("web01".to_string());
-let node1 = builder.build();  // clones name, classes, parameters, etc.
-let node2 = builder.build();  // clones everything again
-
-// Preferred: self means build() takes ownership, zero clones
+// Done (v0.13.0): self means build() takes ownership, zero clones
 let node = Node::builder("web01".to_string())
     .classes(vec!["web".to_string()])
     .build();  // moves fields, zero clones
 ```
-
-If someone needs a reusable builder, they can `clone()` it themselves.
-The API shouldn't force clones on every user.
 
 **Exception**: `MergeConfig` already uses the consuming pattern (`self`),
 which is correct. The builder methods return `Self` and can be chained:
@@ -393,31 +358,21 @@ The reason: `Inventory` has a clear ownership model.
 case. Only add variants when there's a demonstrated performance or
 ergonomics need.
 
-### The Rc → Arc change is internal and invisible
+### ~~The Rc → Arc change is internal and invisible~~ ✅ Done
 
-Switching `Rc` to `Arc` in `Value` doesn't change the public API surface.
-Callers never construct `Value` directly — they get it from the library.
-The change adds `Send + Sync` guarantees invisibly.
+Switching `Rc` to `Arc` in `Value` was completed in v0.13.0. It doesn't
+change the public API surface — callers never construct `Value` directly,
+they get it from the library. The change adds `Send + Sync` guarantees
+invisibly.
 
-The scope is mechanical but wide:
-
-| Change                             | Sites  | Difficulty               |
-| ---------------------------------- | ------ | ------------------------ |
-| `Rc::new` → `Arc::new`            | ~100   | Search and replace       |
-| `Rc::make_mut` → `Arc::make_mut`  | 12     | Mechanical               |
-| `Rc::try_unwrap` → `Arc::try_unwrap` | 14  | Requires `Value: Send`  |
-| `use std::rc::Rc` → `use std::sync::Arc` | ~15 | Mechanical          |
-| `Regex` in `MergeConfig`          | 1      | Needs thread-safe wrapper |
+The scope was mechanical but wide: ~200 sites across 16 files. `Regex`
+in `MergeConfig` was wrapped in `Arc<Mutex<Option<Regex>>>` because
+`regex::Regex` is `!Send + !Sync`.
 
 The performance cost of `Arc` vs `Rc` is negligible for ferroclass:
 atomic increments cost ~5-10 ns vs ~1 ns for plain increments, but the
 merge/interpolation operations each take milliseconds to seconds. The
 atomic overhead is unmeasurable in practice.
-
-The one gotcha is `regex::Regex` in `MergeConfig`, which is `!Send +
-!Sync`. The fix is to store pattern strings and compile regexes on
-demand, which `MergeConfig` already partially supports via
-`compile_regexps()`.
 
 ### Diagnostic-returning APIs
 
@@ -453,15 +408,15 @@ first N results. If the caller needs a `Vec`, they can `.collect()`.
 
 ### Current API Issues Summary
 
-| Issue                               | Current                              | Preferred                              | Impact                    |
-| ----------------------------------- | ------------------------------------ | -------------------------------------- | ------------------------- |
-| `node_names()` allocates           | `Vec<String>`                        | `impl Iterator<Item = &str>`          | LSP autocomplete perf     |
-| `name()` returns `&String`          | `&String`                            | `&str`                                 | Idiomatic Rust            |
-| `NodeBuilder`/`ClassBuilder` clone  | `&mut self` on build                  | `self` on build                         | Avoids forced clones      |
-| Setters require owned `String`     | `set_uri(String)`                     | `set_uri(impl Into<String>)`            | Caller ergonomics         |
-| `StorageOptionsTrait` clones       | `fn parameter_key_style() -> ParameterKeyStyle` | `fn parameter_key_style() -> &ParameterKeyStyle` | Avoids clone per call |
-| `merge_node()` aborts on error     | `Result<Node, Error>`                | `Result<MergeResult, FatalError>`      | LSP needs all diagnostics |
-| `Value` uses `Rc`                   | `!Send + !Sync`                      | `Arc` → `Send + Sync`                  | Thread safety             |
+| Issue                               | Current                              | Preferred                              | Status                   |
+| ----------------------------------- | ------------------------------------ | -------------------------------------- | ------------------------ |
+| `node_names()` allocates           | ~~`Vec<String>`~~ `impl Iterator<Item = &str>` | ✅ Done | LSP autocomplete perf     |
+| `name()` returns `&String`          | ~~`&String`~~ `&str`                        | ✅ Done | Idiomatic Rust            |
+| `NodeBuilder`/`ClassBuilder` clone  | ~~`&mut self` on build~~ `self` on build     | ✅ Done | Avoids forced clones      |
+| Setters require owned `String`     | ~~`set_uri(String)`~~ `set_uri(impl Into<String>)` | ✅ Done | Caller ergonomics |
+| `StorageOptionsTrait` clones       | `fn parameter_key_style() -> ParameterKeyStyle` | `fn parameter_key_style() -> &ParameterKeyStyle` | Nit, deferred |
+| `merge_node()` aborts on error     | `Result<Node, Error>`                | `Result<MergeResult, FatalError>`      | Phase 2                  |
+| `Value` uses `Rc`                   | ~~`!Send + !Sync`~~ `Arc` → `Send + Sync`    | ✅ Done | Thread safety             |
 
 ### Caching and indexing — optional, not in the library core
 

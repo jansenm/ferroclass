@@ -36,7 +36,7 @@ All three interfaces share these needs:
 |---------------------------------------|------------------------------------------|--------------------------------|
 | Load inventory once, query many times | Adapters re-load from disk on every call | Decouple adapters from loading |
 | Search and filter nodes               | Only `get_node(name)` and `node_names()` | Query API with indexing        |
-| Thread-safe inventory handle          | `Rc<Value>` is `!Send + !Sync`           | Switch to `Arc<Value>`         |
+| Thread-safe inventory handle          | ~~`Rc<Value>` is `!Send + !Sync`~~ ✅ Done: `Arc<Value>` is `Send + Sync` | Phase 1 complete |
 | Progress reporting during load        | No callback or event system              | Tracing spans or callback hook |
 | Unified error handling                | Fragmented error types                   | Single `ferroclass::Error`     |
 | Error collection (not abort on first) | Every layer aborts on first error         | Collect-and-continue patterns  |
@@ -389,8 +389,8 @@ The web UI is backed by a JSON API that can also be used programmatically:
 | JSON serialization of all types | `Serialize` already exists for most types; verify completeness                       |
 | Streaming merge progress        | Callback or channel-based progress reporting                                           |
 | File watch + reload             | `inventory.reload()` or `load()` again; decouple from adapter                          |
-| Concurrent read access          | `Arc<Inventory>` (Phase 1: Send + Sync)                                               |
-| Ansible/Salt format endpoints   | Decoupled adapter functions (Phase 0)                                                 |
+| Concurrent read access          | `Arc<Inventory>` ✅ (Phase 1 complete: Send + Sync)                                   |
+| Ansible/Salt format endpoints   | Decoupled adapter functions ✅ (Phase 0 complete)                                      |
 
 ### Technology Choices
 
@@ -477,7 +477,7 @@ Merge replay ──────→ merge_node_with_replay(name) → CodeLens / c
 | Incremental re-parse          | `load()` re-reads everything from disk        | Watch for file changes, re-parse only affected files, re-merge affected nodes                      |
 | Query API                     | Only exact name lookup and full iteration     | `find_nodes_by_class()`, `find_nodes_by_environment()`, `search_nodes()`                           |
 | Merge replay                  | Not yet implemented                          | `merge_node_with_replay()` from Phase 3 in `api-review.md`                                         |
-| Thread-safe inventory         | `Rc<Value>` is `!Send + !Sync`               | Phase 1 `Arc` migration                                                                            |
+| Thread-safe inventory         | ~~`Rc<Value>` is `!Send + !Sync`~~ ✅ `Arc<Value>` is `Send + Sync`               | ~~Phase 1~~ Done                                                                                    |
 
 **Source location tracking** and **diagnostic collection** are the two
 things not yet in the roadmap that the LSP specifically needs. Both are
@@ -552,12 +552,12 @@ add another 4-6 weeks.
 
 | LSP Feature          | Depends on (from api-review.md)                         |
 | -------------------- | ------------------------------------------------------- |
-| Diagnostics          | Phase 0: diagnostic collection + source locations       |
-| Go-to-definition     | Phase 0: source location tracking in parser             |
+| Diagnostics          | Phase 0: diagnostic types ✅ — collection API still needed |
+| Go-to-definition     | Phase 0: source location tracking in parser (not yet)   |
 | Find references      | Phase 2: query API                                      |
 | Hover / merge replay | Phase 3: merge replay API                               |
-| Autocomplete         | Phase 0: public `class_names()`/`node_names()`          |
-| Thread safety        | Phase 1: `Arc<Value>` for concurrent LSP request handling |
+| Autocomplete         | Phase 0: public `class_names()`/`node_names()` ✅        |
+| Thread safety        | Phase 1: `Arc<Value>` ✅                                |
 | File watching        | Phase 2: incremental load/reload                        |
 
 ---
@@ -651,12 +651,12 @@ Pre-configured prompt templates:
 
 | Change                                        | Phase  | Effort | Impact                                      |
 |-----------------------------------------------|--------|--------|---------------------------------------------|
-| Decouple adapters from loading                | 0      | Medium | Enables all interfaces                       |
-| Unify error types                              | 0      | Low    | Cleaner public API                           |
-| Diagnostic collection (`DiagnosticReport`)   | 0      | High   | Collect errors instead of aborting — required for LSP, useful for all |
-| Source locations in parser (`SourceLocation`)  | 0      | Medium | Required for LSP go-to-def, better error messages everywhere |
-| Make `add_node`/`add_class` public            | 0      | Trivial| Enables programmatic construction            |
-| Switch `Rc` → `Arc` in `Value`                | 1      | Medium | Enables thread safety                        |
+| Decouple adapters from loading                | ~~Phase 0~~ ✅ Done | ~~Medium~~ Done | Enables all interfaces                       |
+| Unify error types                              | ~~Phase 0~~ ✅ Done | ~~Low~~ Done    | Cleaner public API                           |
+| Diagnostic collection (`DiagnosticReport`)   | 0 (types added, collection not yet) | High   | Collect errors instead of aborting — required for LSP, useful for all |
+| Source locations in parser (`SourceLocation`)  | 0 (types added, tracking not yet) | Medium | Required for LSP go-to-def, better error messages everywhere |
+| Make `add_node`/`add_class` public            | ~~Phase 0~~ ✅ Done | ~~Trivial~~ Done| Enables programmatic construction            |
+| Switch `Rc` → `Arc` in `Value`                | ~~Phase 1~~ ✅ Done | ~~Medium~~ Done | Enables thread safety                        |
 | Query API (filter, search)                    | 2      | Medium | Enables all interfaces                       |
 
 ### Should Have (the core differentiator)
@@ -688,8 +688,8 @@ The three interfaces depend on the same library improvements, but the
 implementation order matters for impact and effort:
 
 ```
-Phase 0 (API cleanup + diagnostics + source locations)
-Phase 1 (thread safety: Rc → Arc)
+Phase 0 (API cleanup + diagnostics) ✅ Done (v0.13.0)
+Phase 1 (thread safety: Rc → Arc)  ✅ Done (v0.13.0)
 Phase 2 (query API + error collection) ──→ LSP v1 (diagnostics, go-to-def, hover, autocomplete)
 Phase 3 (merge replay) ─────────────────→ MCP v1 (tools, resources, prompts)
 Phase 4 (Explorer features) ────────────→ TUI + Web UI

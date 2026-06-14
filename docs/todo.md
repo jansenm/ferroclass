@@ -28,6 +28,27 @@
 - **PyO3 Python bindings** — Native Python extension module built with PyO3 0.23.
   Provides `ext_pillar()`, `top()`, and `load()` for Salt integration. Available
   since 0.11.1.
+- **Thread safety (Rc → Arc)** — All `Rc<LinkedHashMap>` and `Rc<Array>` in `Value`
+  replaced with `Arc` counterparts. `Inventory`, `Class`, `Node`, `Value`, and
+  `MergeConfig` are now `Send + Sync`. PyO3 types no longer need `unsendable`.
+  Available since 0.13.0.
+- **Public construction APIs** — `Inventory::add_node()` and `add_class()` are now
+  public, enabling programmatic inventory construction without the file system
+  loader. Available since 0.13.0.
+- **Adapter decoupling** — `build_inventory_from()`, `build_host_vars_from()`,
+  `build_top_from()`, `build_pillar_from()` accept pre-loaded `&Inventory`
+  instead of loading from disk. Available since 0.13.0.
+- **Unified error type** — `ferroclass::Error` at crate root wrapping all sub-module
+  errors via `#[snafu(transparent)]`. Available since 0.13.0.
+- **Diagnostic types** — `Diagnostic`, `DiagnosticSeverity`, `SourceLocation` for
+  structured error/warning/info/hint reporting. Foundation for Phase 2's
+  collect-and-continue error handling. Available since 0.13.0.
+- **Builder pattern consumes self** — `NodeBuilder` and `ClassBuilder` take `self`
+  instead of `&mut self`, eliminating forced clones on `build()`. Available
+  since 0.13.0.
+- **Ergonomic API improvements** — `node_names()` returns `impl Iterator<Item = &str>`,
+  `Class::name()` and `Node::name()` return `&str`, setters accept `impl Into<String>`.
+  Available since 0.13.0.
 
 ## Deferred Indefinitely
 

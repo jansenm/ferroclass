@@ -1,4 +1,18 @@
 -------------------------------------------------------------------
+Sat Jun 14 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.13.0-1
+
+- Version bump to 0.13.0
+- Make Inventory::add_node() and add_class() public
+- Add _from() adapter variants that accept pre-loaded &Inventory
+- Add Diagnostic, DiagnosticSeverity, SourceLocation types
+- Add unified ferroclass::Error type at crate root
+- Switch all Rc to Arc for Send + Sync thread safety
+- Change node_names() to return impl Iterator<Item = &str>
+- Change name() on Class and Node to return &str instead of &String
+- Change NodeBuilder/ClassBuilder to consume self (builder pattern)
+- Change setters to accept impl Into<String>
+
+-------------------------------------------------------------------
 Tue May 27 2026 Michael Jansen <ferroclass@michael-jansen.biz> - 0.12.0-1
 
 - Version bump to 0.12.0

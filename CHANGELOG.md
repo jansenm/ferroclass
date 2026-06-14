@@ -8,6 +8,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-06-14
+
+### Added
+
+- **`Inventory::add_node()` and `add_class()` are now public.** Previously
+  private, these methods enable programmatic inventory construction for LSP,
+  MCP, and test fixtures without going through the file system loader.
+- **Adapter `_from()` variants.** `ansible::build_inventory_from()`,
+  `ansible::build_host_vars_from()`, `salt::build_top_from()`, and
+  `salt::build_pillar_from()` accept a pre-loaded `&Inventory` instead of
+  loading from disk. This lets LSP/MCP interfaces reuse an in-memory
+  inventory instead of reloading on every request.
+- **Diagnostic types for collect-and-continue error reporting.** New
+  `ferroclass::Diagnostic`, `DiagnosticSeverity`, and `SourceLocation`
+  types provide structured error/warning/info/hint reporting. These are the
+  foundation for Phase 2's error-collection API, where `load()` and
+  `merge_node()` will return partial results alongside diagnostics.
+- **Unified `ferroclass::Error` type.** A top-level error enum wrapping
+  all sub-module errors (`inventory::Error`, `MergeError`, `ValueMergeError`,
+  `configuration::Error`, etc.) via `#[snafu(transparent)]`. Library
+  consumers can now use a single error type instead of importing from
+  individual modules. Sub-module error types remain accessible for granular
+  matching.
+- **Thread safety: `Value`, `Inventory`, `Class`, `Node`, and `MergeConfig`
+  are now `Send + Sync`.** All `Rc<LinkedHashMap>` and `Rc<Array>` in
+  `Value` have been replaced with `Arc`. `MergeConfig::compiled_class_notfound_regexp`
+  uses `Arc<Mutex<Option<Regex>>>` instead of `Option<Regex>` (which was
+  `!Send + !Sync`). `PyInventory` and `PyNode` no longer need
+  `#[pyclass(unsendable)]`. This unblocks async runtimes, web servers, and
+  LSP/MCP interfaces that need to share inventory across threads.
+
+### Changed
+
+- **`Inventory::node_names()` now returns `impl Iterator<Item = &str>`**
+  instead of `Vec<String>`. This avoids allocating a new `Vec` on every
+  call, which matters for LSP autocomplete that calls `node_names()` on
+  every keystroke. Callers that need a `Vec` can call `.collect()`.
+- **`Class::name()` and `Node::name()` now return `&str` instead of
+  `&String`.** This is the idiomatic Rust convention and makes the API
+  more flexible without breaking callers.
+- **`NodeBuilder` and `ClassBuilder` now consume `self`** (builder pattern).
+  Previously they took `&mut self`, forcing every `build()` call to clone
+  every field. Now `build()` takes ownership and moves fields, zero clones.
+  Callers must chain: `Class::new(name).classes(c).params(p).build()`
+  instead of assigning to a mutable builder.
+- **`Node::set_uri()`, `Node::set_short_name()`, `Node::set_pathname()`,
+  and `Class::set_uri()` now accept `impl Into<String>`** instead of
+  `String`. Callers can pass `&str`, `String`, or any
+  `impl Into<String>` type without forced allocation.
+
 ## [0.12.0] - 2026-05-27
 
 ### Added
