@@ -2,12 +2,22 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::inventory::applications::Applications;
+use crate::inventory::diagnostic::{Diagnostic, DiagnosticSeverity, EntityState};
 use crate::inventory::value::{ClassList, Environment, Key, ParametersType, Value};
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use yaml_rust2::Yaml as YamlValue;
 
 #[derive(Debug, PartialEq, Clone)]
 /// A reclass class with name, applications, classes, parameters, exports, and URI.
+///
+/// The `state` field indicates whether the class's data is trustworthy:
+/// - [`EntityState::Valid`] — merging succeeded; all data is correct
+/// - [`EntityState::Failed`] — merging failed; parameters, exports, classes,
+///   and applications are empty. Only name, URI, state, and diagnostics
+///   are populated.
+///
+/// The `diagnostics` field collects errors, warnings, and informational
+/// messages produced during loading and merging.
 pub struct Class {
     name: String,
     applications: Applications,
@@ -16,6 +26,10 @@ pub struct Class {
     parameters: ParametersType,
     exports: ParametersType,
     uri: Option<String>,
+    /// Whether this class's data is trustworthy.
+    state: EntityState,
+    /// Diagnostics (errors, warnings, info, hints) for this class.
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl Class {
@@ -78,6 +92,42 @@ impl Class {
         self.uri.as_deref()
     }
 
+    /// Return the entity state (Valid or Failed).
+    ///
+    /// A `Valid` class has trustworthy data. A `Failed` class should not
+    /// be used for anything except reporting diagnostics.
+    pub fn state(&self) -> EntityState {
+        self.state
+    }
+
+    /// Set the entity state.
+    pub fn set_state(&mut self, state: EntityState) {
+        self.state = state;
+    }
+
+    /// Return the diagnostics for this class.
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    /// Add a diagnostic to this class.
+    pub fn add_diagnostic(&mut self, diagnostic: Diagnostic) {
+        self.diagnostics.push(diagnostic);
+    }
+
+    /// Return whether this class has any error-severity diagnostics.
+    pub fn has_errors(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|d| d.severity == DiagnosticSeverity::Error)
+    }
+
+    /// Return whether this class's data is trustworthy (state is Valid
+    /// and no error-severity diagnostics).
+    pub fn is_valid(&self) -> bool {
+        self.state == EntityState::Valid && !self.has_errors()
+    }
+
     pub fn set_uri(&mut self, uri: impl Into<String>) {
         self.uri = Some(uri.into());
     }
@@ -92,6 +142,8 @@ pub struct ClassBuilder {
     parameters: ParametersType,
     exports: ParametersType,
     uri: Option<String>,
+    state: EntityState,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl ClassBuilder {
@@ -104,6 +156,8 @@ impl ClassBuilder {
             parameters: ParametersType::default(),
             exports: ParametersType::default(),
             uri: None,
+            state: EntityState::Valid,
+            diagnostics: Vec::new(),
         }
     }
 
@@ -137,6 +191,18 @@ impl ClassBuilder {
         self
     }
 
+    /// Set the entity state (Valid or Failed).
+    pub fn state(mut self, state: EntityState) -> Self {
+        self.state = state;
+        self
+    }
+
+    /// Set the diagnostics for this class.
+    pub fn diagnostics(mut self, diagnostics: Vec<Diagnostic>) -> Self {
+        self.diagnostics = diagnostics;
+        self
+    }
+
     pub fn build(self) -> Class {
         Class {
             name: self.name,
@@ -146,6 +212,8 @@ impl ClassBuilder {
             parameters: self.parameters,
             exports: self.exports,
             uri: self.uri,
+            state: self.state,
+            diagnostics: self.diagnostics,
         }
     }
 }

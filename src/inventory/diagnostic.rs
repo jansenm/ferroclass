@@ -28,6 +28,39 @@
 use std::fmt;
 use std::path::PathBuf;
 
+/// Whether an entity's data is trustworthy.
+///
+/// Both `Node` and `Class` carry a `state` field so callers can tell whether
+/// the entity's data is usable without checking diagnostics manually.
+///
+/// - `Valid` — merging succeeded; parameters, exports, classes, and
+///   applications are correct and complete. There may be informational
+///   diagnostics (warnings, hints) but no errors.
+/// - `Failed` — merging failed; **do not use the entity's data**. Parameters,
+///   exports, classes, and applications are empty/zero. Only the name, URI,
+///   state, and diagnostics are populated. The entity exists as a placeholder
+///   so the caller can report what went wrong and where.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub enum EntityState {
+    /// Merging succeeded. All data is trustworthy.
+    #[default]
+    Valid,
+
+    /// Merging failed. Data is NOT trustworthy — parameters, exports,
+    /// classes, and applications are empty. Only name, URI, state, and
+    /// diagnostics are populated.
+    Failed,
+}
+
+impl fmt::Display for EntityState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EntityState::Valid => write!(f, "valid"),
+            EntityState::Failed => write!(f, "failed"),
+        }
+    }
+}
+
 /// Severity level for diagnostics.
 ///
 /// Follows the LSP specification severity levels, which map directly

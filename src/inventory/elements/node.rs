@@ -3,12 +3,22 @@
 
 use crate::inventory::applications::Applications;
 use crate::inventory::create_automatic_parameters;
+use crate::inventory::diagnostic::{Diagnostic, DiagnosticSeverity, EntityState};
 use crate::inventory::value::{ClassList, Environment, Key, ParametersType, Value};
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use yaml_rust2::Yaml as YamlValue;
 
 #[derive(Debug, PartialEq, Clone)]
 /// A reclass node with name, applications, classes, parameters, exports, environment, and URI.
+///
+/// The `state` field indicates whether the node's data is trustworthy:
+/// - [`EntityState::Valid`] — merging succeeded; all data is correct
+/// - [`EntityState::Failed`] — merging failed; parameters, exports, classes,
+///   and applications are empty. Only name, URI, state, and diagnostics
+///   are populated.
+///
+/// The `diagnostics` field collects errors, warnings, and informational
+/// messages produced during loading and merging.
 pub struct Node {
     applications: Applications,
     classes: ClassList,
@@ -19,6 +29,10 @@ pub struct Node {
     uri: Option<String>,
     short_name: Option<String>,
     pathname: Option<String>,
+    /// Whether this node's data is trustworthy.
+    state: EntityState,
+    /// Diagnostics (errors, warnings, info, hints) for this node.
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl Node {
@@ -100,6 +114,43 @@ impl Node {
     pub fn set_pathname(&mut self, pathname: impl Into<String>) {
         self.pathname = Some(pathname.into());
     }
+
+    /// Return the entity state (Valid or Failed).
+    ///
+    /// A `Valid` node has trustworthy data. A `Failed` node should not
+    /// be used for anything except reporting diagnostics — its
+    /// parameters, exports, classes, and applications are empty.
+    pub fn state(&self) -> EntityState {
+        self.state
+    }
+
+    /// Set the entity state.
+    pub fn set_state(&mut self, state: EntityState) {
+        self.state = state;
+    }
+
+    /// Return the diagnostics for this node.
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    /// Add a diagnostic to this node.
+    pub fn add_diagnostic(&mut self, diagnostic: Diagnostic) {
+        self.diagnostics.push(diagnostic);
+    }
+
+    /// Return whether this node has any error-severity diagnostics.
+    pub fn has_errors(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|d| d.severity == DiagnosticSeverity::Error)
+    }
+
+    /// Return whether this node's data is trustworthy (state is Valid
+    /// and no error-severity diagnostics).
+    pub fn is_valid(&self) -> bool {
+        self.state == EntityState::Valid && !self.has_errors()
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -113,6 +164,8 @@ pub struct NodeBuilder {
     uri: Option<String>,
     short_name: Option<String>,
     pathname: Option<String>,
+    state: EntityState,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl NodeBuilder {
@@ -127,6 +180,8 @@ impl NodeBuilder {
             uri: None,
             short_name: None,
             pathname: None,
+            state: EntityState::Valid,
+            diagnostics: Vec::new(),
         }
     }
 
@@ -165,6 +220,18 @@ impl NodeBuilder {
         self
     }
 
+    /// Set the entity state (Valid or Failed).
+    pub fn state(mut self, state: EntityState) -> Self {
+        self.state = state;
+        self
+    }
+
+    /// Set the diagnostics for this node.
+    pub fn diagnostics(mut self, diagnostics: Vec<Diagnostic>) -> Self {
+        self.diagnostics = diagnostics;
+        self
+    }
+
     pub fn build(self) -> Node {
         Node {
             name: self.name,
@@ -176,6 +243,8 @@ impl NodeBuilder {
             uri: self.uri,
             short_name: self.short_name,
             pathname: self.pathname,
+            state: self.state,
+            diagnostics: self.diagnostics,
         }
     }
 }

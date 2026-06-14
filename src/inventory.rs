@@ -37,7 +37,7 @@ pub mod types;
 pub mod value;
 pub(crate) mod value_merge;
 
-pub use diagnostic::{Diagnostic, DiagnosticSeverity, SourceLocation};
+pub use diagnostic::{Diagnostic, DiagnosticSeverity, EntityState, SourceLocation};
 pub use elements::{Class, Node};
 pub use merge::Error as MergeError;
 pub use value_merge::Error as ValueMergeError;
@@ -110,6 +110,13 @@ pub struct Inventory {
     /// Reverse index: environment → node names in that environment.
     /// None means not yet built; Some(HashMap) means ready for queries.
     environment_to_nodes_index: Option<HashMap<String, Vec<String>>>,
+    /// Whether this inventory's data is trustworthy.
+    /// Valid if all entities loaded successfully; Failed if any fatal error
+    /// prevented loading.
+    state: EntityState,
+    /// Diagnostics (errors, warnings, info, hints) for this inventory
+    /// that don't belong to any specific node or class.
+    diagnostics: Vec<Diagnostic>,
 }
 
 #[derive(Debug)]
@@ -149,6 +156,8 @@ impl Default for Inventory {
             input_data: None,
             class_to_nodes_index: None,
             environment_to_nodes_index: None,
+            state: EntityState::Valid,
+            diagnostics: Vec::new(),
         }
     }
 }
@@ -170,6 +179,8 @@ impl Inventory {
             input_data: None,
             class_to_nodes_index: None,
             environment_to_nodes_index: None,
+            state: EntityState::Valid,
+            diagnostics: Vec::new(),
         }
     }
 
@@ -212,6 +223,42 @@ impl Inventory {
     /// Return the extra input data, if any.
     pub fn input_data(&self) -> Option<&ParametersType> {
         self.input_data.as_ref()
+    }
+
+    /// Return the entity state (Valid or Failed).
+    pub fn state(&self) -> EntityState {
+        self.state
+    }
+
+    /// Set the entity state.
+    pub fn set_state(&mut self, state: EntityState) {
+        self.state = state;
+    }
+
+    /// Return inventory-level diagnostics that don't belong to any
+    /// specific node or class.
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    /// Add an inventory-level diagnostic.
+    pub fn add_diagnostic(&mut self, diagnostic: Diagnostic) {
+        self.diagnostics.push(diagnostic);
+    }
+
+    /// Return whether any entity (inventory, node, or class) has errors.
+    pub fn has_errors(&self) -> bool {
+        if self.state == EntityState::Failed {
+            return true;
+        }
+        if self
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == DiagnosticSeverity::Error)
+        {
+            return true;
+        }
+        self.nodes.values().any(|n| n.has_errors()) || self.classes.values().any(|c| c.has_errors())
     }
 
     fn resolve_class_mappings_for_node(&self, node_name: &str) -> Vec<String> {

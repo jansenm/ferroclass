@@ -46,7 +46,7 @@ pub mod python;
 // These are the primary entry points for library consumers.
 pub use error::Error;
 pub use inventory::Inventory;
-pub use inventory::diagnostic::{Diagnostic, DiagnosticSeverity, SourceLocation};
+pub use inventory::diagnostic::{Diagnostic, DiagnosticSeverity, EntityState, SourceLocation};
 pub use inventory::load;
 pub use inventory::load_from_yaml_string;
 pub use inventory::load_from_yaml_string_with_uri;
