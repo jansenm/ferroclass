@@ -10,11 +10,12 @@ use yaml_rust2::Yaml as YamlValue;
 #[derive(Debug, PartialEq, Clone)]
 /// A reclass class with name, applications, classes, parameters, exports, and URI.
 ///
-/// The `state` field indicates whether the class's data is trustworthy:
-/// - [`EntityState::Valid`] — merging succeeded; all data is correct
-/// - [`EntityState::Failed`] — merging failed; parameters, exports, classes,
-///   and applications are empty. Only name, URI, state, and diagnostics
-///   are populated.
+/// The `state` field indicates how far the class's processing has progressed:
+/// - [`EntityState::Source`] — parsed from YAML, no merging applied
+/// - [`EntityState::Merged`] — class inheritance resolved
+/// - [`EntityState::Interpolated`] — fully processed, all data trustworthy
+/// - [`EntityState::Failed`] — processing failed; only name, URI, state, and
+///   diagnostics are populated
 ///
 /// The `diagnostics` field collects errors, warnings, and informational
 /// messages produced during loading and merging.
@@ -92,10 +93,9 @@ impl Class {
         self.uri.as_deref()
     }
 
-    /// Return the entity state (Valid or Failed).
+    /// Return the entity state.
     ///
-    /// A `Valid` class has trustworthy data. A `Failed` class should not
-    /// be used for anything except reporting diagnostics.
+    /// See [`EntityState`] for the pipeline stages.
     pub fn state(&self) -> EntityState {
         self.state
     }
@@ -122,10 +122,10 @@ impl Class {
             .any(|d| d.severity == DiagnosticSeverity::Error)
     }
 
-    /// Return whether this class's data is trustworthy (state is Valid
+    /// Return whether this class's data is trustworthy (state is not Failed
     /// and no error-severity diagnostics).
-    pub fn is_valid(&self) -> bool {
-        self.state == EntityState::Valid && !self.has_errors()
+    pub fn is_usable(&self) -> bool {
+        self.state.is_usable() && !self.has_errors()
     }
 
     pub fn set_uri(&mut self, uri: impl Into<String>) {
@@ -156,7 +156,7 @@ impl ClassBuilder {
             parameters: ParametersType::default(),
             exports: ParametersType::default(),
             uri: None,
-            state: EntityState::Valid,
+            state: EntityState::Interpolated,
             diagnostics: Vec::new(),
         }
     }
@@ -191,15 +191,21 @@ impl ClassBuilder {
         self
     }
 
-    /// Set the entity state (Valid or Failed).
+    /// Set the entity state.
     pub fn state(mut self, state: EntityState) -> Self {
         self.state = state;
         self
     }
 
-    /// Set the diagnostics for this class.
+    /// Set the diagnostics for this class (replaces any existing diagnostics).
     pub fn diagnostics(mut self, diagnostics: Vec<Diagnostic>) -> Self {
         self.diagnostics = diagnostics;
+        self
+    }
+
+    /// Add a single diagnostic to this class.
+    pub fn add_diagnostic(mut self, diagnostic: Diagnostic) -> Self {
+        self.diagnostics.push(diagnostic);
         self
     }
 

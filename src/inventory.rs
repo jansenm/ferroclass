@@ -110,13 +110,18 @@ pub struct Inventory {
     /// Reverse index: environment → node names in that environment.
     /// None means not yet built; Some(HashMap) means ready for queries.
     environment_to_nodes_index: Option<HashMap<String, Vec<String>>>,
-    /// Whether this inventory's data is trustworthy.
-    /// Valid if all entities loaded successfully; Failed if any fatal error
-    /// prevented loading.
-    state: EntityState,
-    /// Diagnostics (errors, warnings, info, hints) for this inventory
-    /// that don't belong to any specific node or class.
+    /// Inventory-level diagnostics (config errors, filesystem issues, etc.).
+    /// These have `subject: None` — they are about the inventory as a whole,
+    /// not about any specific node or class.
     diagnostics: Vec<Diagnostic>,
+    /// Per-entity summary diagnostics, keyed by entity name.
+    /// Each entity (node or class) can have at most one summary diagnostic
+    /// here. When a node or class is added via `add_node()` / `add_class()`,
+    /// any previous summary diagnostic for that entity is removed and replaced
+    /// with the new one (if the entity has problems). This ensures the
+    /// 0-or-1 invariant: there is never more than one inventory-level
+    /// diagnostic per entity.
+    entity_diagnostics: HashMap<String, Diagnostic>,
 }
 
 #[derive(Debug)]
@@ -156,8 +161,8 @@ impl Default for Inventory {
             input_data: None,
             class_to_nodes_index: None,
             environment_to_nodes_index: None,
-            state: EntityState::Valid,
             diagnostics: Vec::new(),
+            entity_diagnostics: HashMap::new(),
         }
     }
 }
@@ -179,8 +184,8 @@ impl Inventory {
             input_data: None,
             class_to_nodes_index: None,
             environment_to_nodes_index: None,
-            state: EntityState::Valid,
             diagnostics: Vec::new(),
+            entity_diagnostics: HashMap::new(),
         }
     }
 
@@ -225,35 +230,69 @@ impl Inventory {
         self.input_data.as_ref()
     }
 
-    /// Return the entity state (Valid or Failed).
+    /// Return the aggregate entity state of this inventory.
+    ///
+    /// The inventory's state is the minimum (worst) state across all its
+    /// nodes and classes, plus any inventory-level diagnostics:
+    ///
+    /// - If any node or class is `Failed`, the inventory is `Failed`.
+    /// - If the worst is `Source`, the inventory is `Source`.
+    /// - If the worst is `Merged`, the inventory is `Merged`.
+    /// - If everything is `Interpolated` with no errors, the inventory is
+    ///   `Interpolated`.
+    ///
+    /// An empty inventory with no diagnostics defaults to `Interpolated`.
     pub fn state(&self) -> EntityState {
-        self.state
-    }
+        let worst_entity = self
+            .nodes
+            .values()
+            .map(|n| n.state())
+            .chain(self.classes.values().map(|c| c.state()))
+            .min()
+            .unwrap_or(EntityState::Interpolated);
 
-    /// Set the entity state.
-    pub fn set_state(&mut self, state: EntityState) {
-        self.state = state;
+        // If there are inventory-level error diagnostics but all entities
+        // claim to be fine, demote to Merged (something went wrong but we
+        // don't know which entity it affected).
+        if worst_entity == EntityState::Interpolated && self.has_errors() {
+            EntityState::Merged
+        } else {
+            worst_entity
+        }
     }
 
     /// Return inventory-level diagnostics that don't belong to any
-    /// specific node or class.
+    /// specific node or class (subject is None).
     pub fn diagnostics(&self) -> &[Diagnostic] {
         &self.diagnostics
     }
 
-    /// Add an inventory-level diagnostic.
+    /// Return all diagnostics: inventory-level plus per-entity summaries.
+    ///
+    /// The per-entity summaries are the ones stored in `entity_diagnostics`
+    /// — one diagnostic per entity (node or class) that has problems.
+    /// The entity's own `diagnostics()` method has the full details.
+    pub fn all_diagnostics(&self) -> Vec<&Diagnostic> {
+        self.diagnostics
+            .iter()
+            .chain(self.entity_diagnostics.values())
+            .collect()
+    }
+
+    /// Add an inventory-level diagnostic (subject should be None).
+    ///
+    /// For per-entity diagnostics, use `add_node()` / `add_class()` which
+    /// automatically sync the entity summary diagnostic.
     pub fn add_diagnostic(&mut self, diagnostic: Diagnostic) {
         self.diagnostics.push(diagnostic);
     }
 
     /// Return whether any entity (inventory, node, or class) has errors.
     pub fn has_errors(&self) -> bool {
-        if self.state == EntityState::Failed {
-            return true;
-        }
         if self
             .diagnostics
             .iter()
+            .chain(self.entity_diagnostics.values())
             .any(|d| d.severity == DiagnosticSeverity::Error)
         {
             return true;
@@ -277,12 +316,31 @@ impl Inventory {
     /// Add a class to the inventory.
     ///
     /// If a class with the same name already exists, it will be replaced.
-    /// Note: this does not invalidate reverse indexes. If you need
-    /// up-to-date indexes after adding classes, call [`build_indexes`].
+    /// The inventory's per-entity diagnostic for this class is automatically
+    /// synced: any previous summary diagnostic for this class is removed,
+    /// and a new one is added if the class has problems.
+    ///
+    /// Note: this invalidates reverse indexes. Call [`build_indexes`] if
+    /// you need up-to-date indexes after adding classes.
     ///
     /// [`build_indexes`]: Inventory::build_indexes
     pub fn add_class(&mut self, class: Class) {
-        self.classes.insert(class.name().to_string(), class);
+        let name = class.name().to_string();
+        // Remove any stale summary diagnostic for this class
+        self.entity_diagnostics.remove(&name);
+
+        // If the class has problems, add a summary diagnostic
+        if !class.is_usable() {
+            let diagnostic = if class.has_errors() {
+                Diagnostic::error(format!("class '{}' has errors", name)).with_subject(name.clone())
+            } else {
+                Diagnostic::warning(format!("class '{}' has warnings", name))
+                    .with_subject(name.clone())
+            };
+            self.entity_diagnostics.insert(name.clone(), diagnostic);
+        }
+
+        self.classes.insert(name, class);
         // Invalidate indexes since class mappings may affect node-class relationships
         self.class_to_nodes_index = None;
         self.environment_to_nodes_index = None;
@@ -291,6 +349,10 @@ impl Inventory {
     /// Add a node to the inventory.
     ///
     /// Returns an error if a node with the same name already exists.
+    /// The inventory's per-entity diagnostic for this node is automatically
+    /// synced: if the node has problems, a summary diagnostic is added;
+    /// if not, any previous summary diagnostic for this node is removed.
+    ///
     /// This method invalidates reverse indexes since the new node
     /// may introduce new class-node or environment-node mappings.
     pub fn add_node(&mut self, node: Node) -> Result<(), Error> {
@@ -301,7 +363,22 @@ impl Inventory {
                 new_uri: node.uri().unwrap_or("").to_string(),
             });
         }
-        self.nodes.insert(node.name().to_string(), node);
+        let name = node.name().to_string();
+        // Remove any stale summary diagnostic for this node
+        self.entity_diagnostics.remove(&name);
+
+        // If the node has problems, add a summary diagnostic
+        if !node.is_usable() {
+            let diagnostic = if node.has_errors() {
+                Diagnostic::error(format!("node '{}' has errors", name)).with_subject(name.clone())
+            } else {
+                Diagnostic::warning(format!("node '{}' has warnings", name))
+                    .with_subject(name.clone())
+            };
+            self.entity_diagnostics.insert(name.clone(), diagnostic);
+        }
+
+        self.nodes.insert(name, node);
         // Invalidate indexes since the new node adds class-node and env-node mappings
         self.class_to_nodes_index = None;
         self.environment_to_nodes_index = None;
@@ -4816,5 +4893,150 @@ mod tests {
             .map(|n| n.name())
             .collect();
         assert_eq!(nodes.len(), 2);
+    }
+
+    #[test]
+    fn test_inventory_state_aggregate_interpolated() {
+        let inventory = Inventory::new();
+        // Empty inventory defaults to Interpolated
+        assert_eq!(inventory.state(), EntityState::Interpolated);
+    }
+
+    #[test]
+    fn test_inventory_state_aggregate_failed_when_node_failed() {
+        let mut inventory = Inventory::new();
+        let failed_node = Node::new("web01.example.com".to_string())
+            .state(EntityState::Failed)
+            .build();
+        inventory.add_node(failed_node).expect("should add node");
+        assert_eq!(inventory.state(), EntityState::Failed);
+    }
+
+    #[test]
+    fn test_inventory_state_aggregate_min() {
+        let mut inventory = Inventory::new();
+        let node_merged = Node::new("web01.example.com".to_string())
+            .state(EntityState::Merged)
+            .build();
+        let node_interpolated = Node::new("web02.example.com".to_string())
+            .state(EntityState::Interpolated)
+            .build();
+        inventory.add_node(node_merged).expect("should add node");
+        inventory
+            .add_node(node_interpolated)
+            .expect("should add node");
+        // Worst state is Merged, so inventory is Merged
+        assert_eq!(inventory.state(), EntityState::Merged);
+    }
+
+    #[test]
+    fn test_add_node_auto_syncs_entity_diagnostic_on_failure() {
+        let mut inventory = Inventory::new();
+        let failed_node = Node::new("web01.example.com".to_string())
+            .state(EntityState::Failed)
+            .add_diagnostic(Diagnostic::error("class not found"))
+            .build();
+        inventory.add_node(failed_node).expect("should add node");
+
+        // Inventory should have an entity diagnostic for the failed node
+        let all_diag = inventory.all_diagnostics();
+        let node_diag = all_diag
+            .iter()
+            .find(|d| d.subject.as_deref() == Some("web01.example.com"));
+        assert!(
+            node_diag.is_some(),
+            "should have summary diagnostic for failed node"
+        );
+        assert_eq!(node_diag.unwrap().severity, DiagnosticSeverity::Error);
+    }
+
+    #[test]
+    fn test_add_node_no_diagnostic_when_usable() {
+        let mut inventory = Inventory::new();
+        let good_node = Node::new("web01.example.com".to_string())
+            .state(EntityState::Interpolated)
+            .build();
+        inventory.add_node(good_node).expect("should add node");
+
+        // No entity diagnostics for a healthy node
+        let all_diag = inventory.all_diagnostics();
+        assert!(
+            all_diag.is_empty(),
+            "healthy node should not produce diagnostics"
+        );
+    }
+
+    #[test]
+    fn test_add_node_replaces_stale_diagnostic_on_re_add() {
+        let mut inventory = Inventory::new();
+
+        // Add a failed node
+        let failed_node = Node::new("web01.example.com".to_string())
+            .state(EntityState::Failed)
+            .add_diagnostic(Diagnostic::error("class not found"))
+            .build();
+        inventory.add_node(failed_node).expect("should add node");
+        assert_eq!(inventory.all_diagnostics().len(), 1);
+
+        // Add a failed class — should get a diagnostic too
+        let failed_class = Class::new("myclass".to_string())
+            .state(EntityState::Failed)
+            .add_diagnostic(Diagnostic::error("parse error"))
+            .build();
+        inventory.add_class(failed_class);
+        assert_eq!(
+            inventory.all_diagnostics().len(),
+            2,
+            "should have diagnostics for node and class"
+        );
+
+        // Add a healthy class with same name — should replace the diagnostic
+        let healthy_class = Class::new("myclass".to_string())
+            .state(EntityState::Interpolated)
+            .build();
+        inventory.add_class(healthy_class);
+        // Only the node diagnostic remains
+        let all_diag = inventory.all_diagnostics();
+        assert_eq!(
+            all_diag.len(),
+            1,
+            "re-adding healthy class should remove its diagnostic"
+        );
+        assert_eq!(all_diag[0].subject.as_deref(), Some("web01.example.com"));
+    }
+
+    #[test]
+    fn test_add_class_auto_syncs_entity_diagnostic_on_failure() {
+        let mut inventory = Inventory::new();
+        let failed_class = Class::new("myclass".to_string())
+            .state(EntityState::Failed)
+            .add_diagnostic(Diagnostic::error("circular inheritance"))
+            .build();
+        inventory.add_class(failed_class);
+
+        let all_diag = inventory.all_diagnostics();
+        let class_diag = all_diag
+            .iter()
+            .find(|d| d.subject.as_deref() == Some("myclass"));
+        assert!(
+            class_diag.is_some(),
+            "should have summary diagnostic for failed class"
+        );
+        assert_eq!(class_diag.unwrap().severity, DiagnosticSeverity::Error);
+    }
+
+    #[test]
+    fn test_inventory_has_errors_checks_entity_diagnostics() {
+        let mut inventory = Inventory::new();
+        let failed_node = Node::new("broken".to_string())
+            .state(EntityState::Failed)
+            .add_diagnostic(Diagnostic::error("something broke"))
+            .build();
+        inventory.add_node(failed_node).expect("should add node");
+
+        assert!(
+            inventory.has_errors(),
+            "inventory with failed node should report errors"
+        );
     }
 }

@@ -28,36 +28,102 @@
 use std::fmt;
 use std::path::PathBuf;
 
-/// Whether an entity's data is trustworthy.
+/// How far an entity's processing pipeline has progressed.
 ///
 /// Both `Node` and `Class` carry a `state` field so callers can tell whether
-/// the entity's data is usable without checking diagnostics manually.
+/// the entity's data is usable and at what stage of processing it currently
+/// resides. The states form a pipeline:
 ///
-/// - `Valid` — merging succeeded; parameters, exports, classes, and
-///   applications are correct and complete. There may be informational
-///   diagnostics (warnings, hints) but no errors.
-/// - `Failed` — merging failed; **do not use the entity's data**. Parameters,
-///   exports, classes, and applications are empty/zero. Only the name, URI,
-///   state, and diagnostics are populated. The entity exists as a placeholder
-///   so the caller can report what went wrong and where.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+/// ```text
+/// Source ──(merge)──→ Merged ──(interpolate)──→ Interpolated
+///   │                   │                          │
+///   └───(fail)──→ Failed ←────(fail)────────────┘
+/// ```
+///
+/// - **Source** — parsed from YAML, no merging or interpolation applied.
+///   The raw data as defined in the file: declared classes, local parameters,
+///   local exports, environment, applications, and URI.
+/// - **Merged** — class inheritance resolved and parameters merged, but
+///   interpolation not yet applied. Data is trustworthy for structural
+///   inspection but may contain unresolved `${...}` references.
+/// - **Interpolated** — fully processed: merged, interpolated, and
+///   `_reclass_` metadata added. All data is final and trustworthy.
+///   This is the default state returned by `merge_node()`.
+/// - **Failed** — processing failed. **Do not use the entity's data.**
+///   Parameters, exports, classes, and applications are empty/zero. Only
+///   the name, URI, pathname, state, and diagnostics are populated. The
+///   entity exists as a placeholder so the caller can report what went
+///   wrong and where.
+/// # Ordering
+///
+/// Variants are ordered by pipeline progress: `Source < Merged < Interpolated`,
+/// with `Failed` treated as the least advanced state so that
+/// `Iterator::min()` correctly produces the worst-case state:
+///
+/// ```rust,ignore
+/// assert!(Failed < Source);
+/// assert!(Source < Merged);
+/// assert!(Merged < Interpolated);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum EntityState {
-    /// Merging succeeded. All data is trustworthy.
-    #[default]
-    Valid,
+    /// Parsed from YAML, no merging or interpolation applied.
+    Source,
 
-    /// Merging failed. Data is NOT trustworthy — parameters, exports,
-    /// classes, and applications are empty. Only name, URI, state, and
-    /// diagnostics are populated.
+    /// Class inheritance resolved and parameters merged.
+    /// Interpolation not yet applied; data may contain unresolved `${...}`
+    /// references.
+    Merged,
+
+    /// Fully processed: merged, interpolated, and `_reclass_` metadata added.
+    /// All data is final and trustworthy.
+    #[default]
+    Interpolated,
+
+    /// Processing failed. Data is NOT trustworthy — parameters, exports,
+    /// classes, and applications are empty. Only name, URI, pathname, state,
+    /// and diagnostics are populated.
     Failed,
+}
+
+impl EntityState {
+    /// Returns `true` if the entity's data is trustworthy for use.
+    ///
+    /// `Source`, `Merged`, and `Interpolated` entities have usable data.
+    /// `Failed` entities should not be relied on.
+    pub fn is_usable(self) -> bool {
+        self != EntityState::Failed
+    }
 }
 
 impl fmt::Display for EntityState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EntityState::Valid => write!(f, "valid"),
             EntityState::Failed => write!(f, "failed"),
+            EntityState::Source => write!(f, "source"),
+            EntityState::Merged => write!(f, "merged"),
+            EntityState::Interpolated => write!(f, "interpolated"),
         }
+    }
+}
+
+impl Ord for EntityState {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        fn progress(s: &EntityState) -> u8 {
+            match s {
+                EntityState::Failed => 0,
+                EntityState::Source => 1,
+                EntityState::Merged => 2,
+                EntityState::Interpolated => 3,
+            }
+        }
+        progress(self).cmp(&progress(other))
+    }
+}
+
+impl PartialOrd for EntityState {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -340,5 +406,48 @@ mod tests {
         let diag = Diagnostic::warning("deprecated syntax");
         let displayed = format!("{}", diag);
         assert_eq!(displayed, "warning: deprecated syntax");
+    }
+
+    #[test]
+    fn test_entity_state_ordering() {
+        assert!(EntityState::Failed < EntityState::Source);
+        assert!(EntityState::Source < EntityState::Merged);
+        assert!(EntityState::Merged < EntityState::Interpolated);
+        // min() returns the worst (least advanced) state
+        assert_eq!(
+            [
+                EntityState::Interpolated,
+                EntityState::Failed,
+                EntityState::Merged
+            ]
+            .into_iter()
+            .min(),
+            Some(EntityState::Failed)
+        );
+        assert_eq!(
+            [EntityState::Source, EntityState::Merged].into_iter().min(),
+            Some(EntityState::Source)
+        );
+    }
+
+    #[test]
+    fn test_entity_state_default() {
+        assert_eq!(EntityState::default(), EntityState::Interpolated);
+    }
+
+    #[test]
+    fn test_entity_state_is_usable() {
+        assert!(EntityState::Source.is_usable());
+        assert!(EntityState::Merged.is_usable());
+        assert!(EntityState::Interpolated.is_usable());
+        assert!(!EntityState::Failed.is_usable());
+    }
+
+    #[test]
+    fn test_entity_state_display() {
+        assert_eq!(format!("{}", EntityState::Source), "source");
+        assert_eq!(format!("{}", EntityState::Merged), "merged");
+        assert_eq!(format!("{}", EntityState::Interpolated), "interpolated");
+        assert_eq!(format!("{}", EntityState::Failed), "failed");
     }
 }
