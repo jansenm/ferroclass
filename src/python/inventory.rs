@@ -40,6 +40,6 @@ impl PyInventory {
 
     /// Return the names of all loaded nodes in insertion order.
     fn node_names(&self) -> Vec<String> {
-        self.inventory.node_names()
+        self.inventory.node_names().map(|s| s.to_string()).collect()
     }
 }

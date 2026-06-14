@@ -40,7 +40,7 @@ fn str_key(s: &str) -> Key {
 fn test_e2e_load_all_nodes_and_classes() {
     let inventory = load_e2e_inventory();
 
-    let node_names: Vec<_> = inventory.node_names();
+    let node_names: Vec<_> = inventory.node_names().collect();
     assert!(
         node_names.len() >= 4,
         "Expected at least 4 nodes, got {:?}",
@@ -254,22 +254,22 @@ fn test_e2e_exports() {
 #[test]
 fn test_e2e_node_names() {
     let inventory = load_e2e_inventory();
-    let names = inventory.node_names();
+    let names: Vec<_> = inventory.node_names().collect();
 
     assert!(
-        names.contains(&"web-prod-01".to_string()),
+        names.contains(&"web-prod-01"),
         "node_names should contain web-prod-01"
     );
     assert!(
-        names.contains(&"db-prod-01".to_string()),
+        names.contains(&"db-prod-01"),
         "node_names should contain db-prod-01"
     );
     assert!(
-        names.contains(&"app-staging-01".to_string()),
+        names.contains(&"app-staging-01"),
         "node_names should contain app-staging-01"
     );
     assert!(
-        names.contains(&"web-prod-02".to_string()),
+        names.contains(&"web-prod-02"),
         "node_names should contain web-prod-02"
     );
 }

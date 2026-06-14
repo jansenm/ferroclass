@@ -264,8 +264,12 @@ impl Inventory {
     }
 
     /// Return the names of all loaded nodes in insertion order.
-    pub fn node_names(&self) -> Vec<String> {
-        self.nodes.keys().cloned().collect()
+    ///
+    /// Returns a borrowing iterator that yields `&str` references,
+    /// avoiding allocation. Call `.collect::<Vec<_>>()` if you need
+    /// an owned collection.
+    pub fn node_names(&self) -> impl Iterator<Item = &str> {
+        self.nodes.keys().map(|s| s.as_str())
     }
 
     /// Build a map of all merged nodes for inventory-query resolution.
@@ -276,7 +280,7 @@ impl Inventory {
     pub fn build_inventory_map(&self) -> Result<inv_query::InventoryMap, Error> {
         let mut inventory_map = inv_query::InventoryMap::new();
         for node_name in self.node_names() {
-            let node = match self.merge_node(&node_name) {
+            let node = match self.merge_node(node_name) {
                 Ok(n) => n,
                 Err(_) => {
                     if self.merge_config.inventory_ignore_failed_node {
@@ -287,12 +291,12 @@ impl Inventory {
                         continue;
                     }
                     return Err(Error::NodeNotFound {
-                        node_name: node_name.clone(),
+                        node_name: node_name.to_string(),
                     });
                 }
             };
             inventory_map.insert(
-                node_name,
+                node_name.to_string(),
                 inv_query::NodeInventory {
                     items: node.exports().clone(),
                     environment: node.environment().clone(),
