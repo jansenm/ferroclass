@@ -129,7 +129,7 @@ These don't exist today but would be valuable:
 
 #### 1. Diagnostic Type
 
-```rust
+```rust,ignore
 pub enum DiagnosticSeverity {
     Error,
     Warning,
@@ -159,7 +159,7 @@ the collected diagnostics and the (possibly partial) inventory. Fatal
 errors (can't read directory, invalid config) still return `Err`. All
 per-file, per-class, and per-node errors become diagnostics in the report.
 
-```rust
+```rust,ignore
 // Before:
 pub fn load(options: &StorageOptions) -> Result<Inventory, Error>;
 
@@ -177,7 +177,7 @@ diagnostics but still display the partial inventory.
 `merge_node()` currently returns `Result<Node, merge::Error>`. It should
 collect errors and warnings:
 
-```rust
+```rust,ignore
 // Before:
 pub fn merge_node(&self, name: &str) -> Result<Node, Error>;
 
@@ -196,7 +196,7 @@ The parser currently discards file/line information after parsing. The
 LSP needs this for go-to-definition and diagnostic locations. The library
 needs it for meaningful error messages.
 
-```rust
+```rust,ignore
 pub struct SourceLocation {
     pub file: PathBuf,
     pub line: usize,

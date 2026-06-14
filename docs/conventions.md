@@ -33,7 +33,7 @@ second line identifies *what* (the missing class). No line is redundant.
 ### Display Rules
 
 1. **Short sentences.** Lowercase after the first word unless it's a proper noun.
-   ```rust
+   ```rust,ignore
    // Good
    #[snafu(display("class '{class_name}' not found"))]
 
@@ -43,7 +43,7 @@ second line identifies *what* (the missing class). No line is redundant.
 
 2. **Precise terminology.** Use "mapping" (not "hash" or "dict"), "list" (not "array"),
    "top level key" (not "root key" or "field").
-   ```rust
+   ```rust,ignore
    // Good
    #[snafu(display("top level key '{key}' is not supported"))]
 
@@ -61,7 +61,7 @@ second line identifies *what* (the missing class). No line is redundant.
 
 5. **Quotes around user-provided names.** Class names, node names, file paths, and
    config keys appear in single quotes.
-   ```rust
+   ```rust,ignore
    #[snafu(display("node '{node_name}' not found"))]
    ```
 
@@ -70,7 +70,7 @@ second line identifies *what* (the missing class). No line is redundant.
 1. **Always use `source:` not `detail: e.to_string()`.** The `source` field preserves
    the error chain so `std::error::Error::source()` can walk it. Stringifying discards
    the chain — the user sees only one line and loses all context below.
-   ```rust
+   ```rust,ignore
    // Good — chain is preserved
    #[snafu(display("class mapping error"))]
    ClassMapping { source: class_mapping::Error }
@@ -91,7 +91,7 @@ second line identifies *what* (the missing class). No line is redundant.
 
 A **pass-through layer** wraps an inner error without adding any information. Example:
 
-```rust
+```rust,ignore
 // Pass-through — display just says "interpolation error"
 #[snafu(display("interpolation error"))]
 InterpolationError { source: interpolation::Error }
@@ -102,7 +102,7 @@ type. It is noise in the chain.
 
 **Eliminate pass-throughs with `#[snafu(transparent)]`:**
 
-```rust
+```rust,ignore
 #[snafu(transparent)]
 Interpolation { source: interpolation::Error }
 ```
@@ -115,7 +115,7 @@ When a variant is transparent:
 **When a layer IS justified.** If the variant adds context — a name, a path, a phase —
 it is not a pass-through:
 
-```rust
+```rust,ignore
 // Justified — adds the node name
 #[snafu(display("error merging node '{node_name}'"))]
 Merge { source: inv::Error, node_name: String }

@@ -10,7 +10,7 @@ identifies changes needed to support external interfaces (TUI, web, MCP).
 
 ### Crate Root Re-exports (`src/lib.rs`)
 
-```rust
+```rust,ignore
 pub use inventory::Inventory;
 pub use inventory::load;
 pub use inventory::load_from_yaml_string;
@@ -164,7 +164,7 @@ intermediate states. Only the final merged result is returned.
 
 **Proposed API**:
 
-```rust
+```rust,ignore
 /// A snapshot of the accumulator state after merging one step.
 pub struct MergeStep {
     /// What kind of step produced this snapshot
@@ -277,7 +277,7 @@ The right choice depends on the lifecycle:
 - **Query methods on `&self`** should borrow, not allocate. The caller is
   just reading from the inventory; they shouldn't pay for cloning.
 
-  ```rust
+  ```rust,ignore
   // Done (v0.13.0): borrows, zero allocation
   pub fn node_names(&self) -> impl Iterator<Item = &str>
   ```
@@ -288,7 +288,7 @@ The right choice depends on the lifecycle:
 - **Setters should accept flexible types.** `&str`, `String`, and
   `impl Into<String>` callers should all work without forced allocation:
 
-  ```rust
+  ```rust,ignore
   // Done (v0.13.0): borrows when possible, owns when needed
   pub fn set_uri(&mut self, uri: impl Into<String>)
   ```
@@ -296,7 +296,7 @@ The right choice depends on the lifecycle:
 - **Return `&str` instead of `&String`.** `&String` exposes the interior
   type and doesn't coerce as nicely. `&str` is the idiomatic Rust choice:
 
-  ```rust
+  ```rust,ignore
   // Done (v0.13.0): idiomatic, coerces to &str, &String, etc.
   pub fn name(&self) -> &str
   ```
@@ -304,7 +304,7 @@ The right choice depends on the lifecycle:
 - **Constructors and merge methods should return owned types.** This is
   already correct in the current API:
 
-  ```rust
+  ```rust,ignore
   // Already correct: merge creates new data, can't return a reference
   pub fn merge_node(&self, node_name: &str) -> Result<Node, Error>
   pub fn load(options: &StorageOptions) -> Result<Inventory, Error>
@@ -316,7 +316,7 @@ The builder pattern in Rust should consume `self`, not borrow `&mut self`.
 This was fixed in v0.13.0 — `NodeBuilder` and `ClassBuilder` now take
 `self` instead of `&mut self`:
 
-```rust
+```rust,ignore
 // Done (v0.13.0): self means build() takes ownership, zero clones
 let node = Node::builder("web01".to_string())
     .classes(vec!["web".to_string()])
@@ -326,7 +326,7 @@ let node = Node::builder("web01".to_string())
 **Exception**: `MergeConfig` already uses the consuming pattern (`self`),
 which is correct. The builder methods return `Self` and can be chained:
 
-```rust
+```rust,ignore
 let config = MergeConfig::new()
     .value_override_prefix("~")  // consumes self, returns Self
     .automatic_parameters(true)    // consumes self, returns Self
@@ -337,7 +337,7 @@ let config = MergeConfig::new()
 
 Some Rust crates provide three versions of each method:
 
-```rust
+```rust,ignore
 fn foo(&self) -> &T          // borrow
 fn foo_mut(&mut self) -> &mut T  // mutable borrow
 fn into_foo(self) -> T         // consume
@@ -384,7 +384,7 @@ atomic overhead is unmeasurable in practice.
 
 New methods should return structured results, not just `Result<T, Error>`:
 
-```rust
+```rust,ignore
 // Current: all-or-nothing, aborts on first error
 pub fn merge_node(&self, name: &str) -> Result<Node, Error>
 
@@ -402,7 +402,7 @@ diagnostics and exiting.
 
 New query methods should return iterators, not vectors:
 
-```rust
+```rust,ignore
 // Preferred: borrows, lazy, zero allocation
 pub fn find_nodes_by_class(&self, class: &str) -> impl Iterator<Item = &Node>
 pub fn find_nodes_by_environment(&self, env: &Environment) -> impl Iterator<Item = &Node>
@@ -461,7 +461,7 @@ optional and never be required for basic use.
 These are all plain `HashMap`-based indexes that can be built during
 `load()` or `build_inventory_map()`. No crate required:
 
-```rust
+```rust,ignore
 pub struct Inventory {
     // ... existing fields ...
 
