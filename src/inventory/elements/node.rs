@@ -81,24 +81,24 @@ impl Node {
         self.uri.as_deref()
     }
 
-    pub fn set_uri(&mut self, uri: String) {
-        self.uri = Some(uri);
+    pub fn set_uri(&mut self, uri: impl Into<String>) {
+        self.uri = Some(uri.into());
     }
 
     pub fn short_name(&self) -> &str {
         self.short_name.as_deref().unwrap_or(&self.name)
     }
 
-    pub fn set_short_name(&mut self, short_name: String) {
-        self.short_name = Some(short_name);
+    pub fn set_short_name(&mut self, short_name: impl Into<String>) {
+        self.short_name = Some(short_name.into());
     }
 
     pub fn pathname(&self) -> Option<&str> {
         self.pathname.as_deref()
     }
 
-    pub fn set_pathname(&mut self, pathname: String) {
-        self.pathname = Some(pathname);
+    pub fn set_pathname(&mut self, pathname: impl Into<String>) {
+        self.pathname = Some(pathname.into());
     }
 }
 

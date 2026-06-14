@@ -78,8 +78,8 @@ impl Class {
         self.uri.as_deref()
     }
 
-    pub fn set_uri(&mut self, uri: String) {
-        self.uri = Some(uri);
+    pub fn set_uri(&mut self, uri: impl Into<String>) {
+        self.uri = Some(uri.into());
     }
 }
 
