@@ -354,13 +354,30 @@ pub fn build_inventory_from(
         let merged = match inventory.merge_node(node.name()) {
             Ok(n) => n,
             Err(e) => {
-                if ignore_failed_node {
-                    tracing::warn!("Skipping node '{}': {}", node.name(), e);
-                    continue;
-                }
+                // Implementation error (I/O, etc.) — propagate
                 return Err(AnsibleInventoryError::InventoryLoad { source: e });
             }
         };
+
+        if !merged.is_usable() {
+            if ignore_failed_node {
+                tracing::warn!(
+                    "Skipping failed node '{}': {}",
+                    node.name(),
+                    merged
+                        .diagnostics()
+                        .first()
+                        .map(|d| d.message.as_str())
+                        .unwrap_or("unknown error")
+                );
+                continue;
+            }
+            return Err(AnsibleInventoryError::InventoryLoad {
+                source: crate::inventory::Error::NodeNotFound {
+                    node_name: node.name().to_string(),
+                },
+            });
+        }
 
         let has_inv_query = {
             let params = merged.parameters();
@@ -370,16 +387,28 @@ pub fn build_inventory_from(
 
         let merged = if has_inv_query {
             match inventory.merge_node_with_inventory(node.name(), &inv_map) {
-                Ok(n) => n,
-                Err(e) => {
-                    if ignore_failed_render {
-                        tracing::warn!(
-                            "Skipping node '{}': inv query render failed: {}",
-                            node.name(),
-                            e
-                        );
-                        continue;
+                Ok(n) => {
+                    if !n.is_usable() {
+                        if ignore_failed_render {
+                            tracing::warn!(
+                                "Skipping node '{}': inv query render failed: {}",
+                                node.name(),
+                                n.diagnostics()
+                                    .first()
+                                    .map(|d| d.message.as_str())
+                                    .unwrap_or("unknown error")
+                            );
+                            continue;
+                        }
+                        return Err(AnsibleInventoryError::InventoryLoad {
+                            source: crate::inventory::Error::NodeNotFound {
+                                node_name: node.name().to_string(),
+                            },
+                        });
                     }
+                    n
+                }
+                Err(e) => {
                     return Err(AnsibleInventoryError::InventoryLoad { source: e });
                 }
             }
@@ -494,6 +523,20 @@ pub fn build_host_vars_from(
             node_name: hostname.to_string(),
         })?;
 
+    if !merged.is_usable() {
+        let msg = merged
+            .diagnostics()
+            .first()
+            .map(|d| d.message.as_str())
+            .unwrap_or("merge failed");
+        return Err(HostVarsError::Merge {
+            source: Box::new(inv::Error::NodeNotFound {
+                node_name: hostname.to_string(),
+            }),
+            node_name: format!("{}: {}", hostname, msg),
+        });
+    }
+
     let has_inv_query = {
         let params = merged.parameters();
         params.values().any(|v| v.has_inv_query())
@@ -506,15 +549,30 @@ pub fn build_host_vars_from(
             .map_err(HostVarsError::from)?;
 
         match inventory.merge_node_with_inventory(hostname, &inv_map) {
-            Ok(n) => n,
-            Err(e) => {
-                if ignore_failed_render {
-                    tracing::warn!(
-                        "Failed to render inv queries for node '{}': {}",
-                        hostname,
-                        e
-                    );
+            Ok(n) => {
+                if !n.is_usable() {
+                    let msg = n
+                        .diagnostics()
+                        .first()
+                        .map(|d| d.message.as_str())
+                        .unwrap_or("inv query render failed");
+                    if ignore_failed_render {
+                        tracing::warn!(
+                            "Failed to render inv queries for node '{}': {}",
+                            hostname,
+                            msg
+                        );
+                    }
+                    return Err(HostVarsError::Merge {
+                        source: Box::new(inv::Error::NodeNotFound {
+                            node_name: hostname.to_string(),
+                        }),
+                        node_name: format!("{}: {}", hostname, msg),
+                    });
                 }
+                n
+            }
+            Err(e) => {
                 return Err(HostVarsError::Merge {
                     source: Box::new(e),
                     node_name: hostname.to_string(),

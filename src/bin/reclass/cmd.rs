@@ -82,6 +82,20 @@ pub(crate) fn nodeinfo_main(config: Options, node_name: &str) -> Result<(), Erro
             node_name: node_name.to_string(),
         })?;
 
+    if !merged.is_usable() {
+        let msg = merged
+            .diagnostics()
+            .first()
+            .map(|d| d.message.as_str())
+            .unwrap_or("merge failed");
+        return Err(Error::Merge {
+            source: Box::new(inv::Error::NodeNotFound {
+                node_name: node_name.to_string(),
+            }),
+            node_name: format!("{}: {}", node_name, msg),
+        });
+    }
+
     let timestamp = format_timestamp();
     let pretty = config.output_options.pretty_print;
     let output_format = config.output_options.output;

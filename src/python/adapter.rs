@@ -138,6 +138,18 @@ pub fn ext_pillar(
 
     let node = inventory.merge_node(minion_id).map_err(error::to_py_err)?;
 
+    if !node.is_usable() {
+        let msg = node
+            .diagnostics()
+            .first()
+            .map(|d| d.message.as_str())
+            .unwrap_or("merge failed");
+        return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "node '{}' failed to merge: {}",
+            minion_id, msg
+        )));
+    }
+
     let has_inv_query = {
         let params = node.parameters();
         params.values().any(|v| v.has_inv_query())
@@ -146,9 +158,21 @@ pub fn ext_pillar(
 
     let node = if has_inv_query {
         let inv_map = inventory.build_inventory_map().map_err(error::to_py_err)?;
-        inventory
+        let n = inventory
             .merge_node_with_inventory(minion_id, &inv_map)
-            .map_err(error::to_py_err)?
+            .map_err(error::to_py_err)?;
+        if !n.is_usable() {
+            let msg = n
+                .diagnostics()
+                .first()
+                .map(|d| d.message.as_str())
+                .unwrap_or("inv query render failed");
+            return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "node '{}' failed to render inv queries: {}",
+                minion_id, msg
+            )));
+        }
+        n
     } else {
         node
     };
@@ -242,6 +266,18 @@ pub fn top(
             // Single minion: return {environment: [applications]}
             let node = inventory.merge_node(mid).map_err(error::to_py_err)?;
 
+            if !node.is_usable() {
+                let msg = node
+                    .diagnostics()
+                    .first()
+                    .map(|d| d.message.as_str())
+                    .unwrap_or("merge failed");
+                return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "node '{}' failed to merge: {}",
+                    mid, msg
+                )));
+            }
+
             let has_inv_query = {
                 let params = node.parameters();
                 params.values().any(|v| v.has_inv_query())
@@ -250,9 +286,21 @@ pub fn top(
 
             let node = if has_inv_query {
                 let inv_map = inventory.build_inventory_map().map_err(error::to_py_err)?;
-                inventory
+                let n = inventory
                     .merge_node_with_inventory(mid, &inv_map)
-                    .map_err(error::to_py_err)?
+                    .map_err(error::to_py_err)?;
+                if !n.is_usable() {
+                    let msg = n
+                        .diagnostics()
+                        .first()
+                        .map(|d| d.message.as_str())
+                        .unwrap_or("inv query render failed");
+                    return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                        "node '{}' failed to render inv queries: {}",
+                        mid, msg
+                    )));
+                }
+                n
             } else {
                 node
             };
@@ -268,13 +316,29 @@ pub fn top(
                 let merged = match inventory.merge_node(raw_node.name()) {
                     Ok(n) => n,
                     Err(e) => {
-                        if ignore_failed_node {
-                            tracing::warn!("Skipping node '{}': {}", raw_node.name(), e);
-                            continue;
-                        }
+                        // Implementation error (I/O, etc.) — propagate
                         return Err(error::to_py_err(e));
                     }
                 };
+
+                if !merged.is_usable() {
+                    if ignore_failed_node {
+                        tracing::warn!(
+                            "Skipping failed node '{}': {}",
+                            raw_node.name(),
+                            merged
+                                .diagnostics()
+                                .first()
+                                .map(|d| d.message.as_str())
+                                .unwrap_or("unknown error")
+                        );
+                        continue;
+                    }
+                    return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                        "node '{}' failed to merge",
+                        raw_node.name()
+                    )));
+                }
 
                 let has_inv_query = {
                     let params = merged.parameters();
@@ -285,16 +349,27 @@ pub fn top(
                 let merged = if has_inv_query {
                     let inv_map = inventory.build_inventory_map().map_err(error::to_py_err)?;
                     match inventory.merge_node_with_inventory(raw_node.name(), &inv_map) {
-                        Ok(n) => n,
-                        Err(e) => {
-                            if ignore_failed_render {
-                                tracing::warn!(
-                                    "Skipping node '{}': inv query render failed: {}",
-                                    raw_node.name(),
-                                    e
-                                );
-                                continue;
+                        Ok(n) => {
+                            if !n.is_usable() {
+                                if ignore_failed_render {
+                                    tracing::warn!(
+                                        "Skipping node '{}': inv query render failed: {}",
+                                        raw_node.name(),
+                                        n.diagnostics()
+                                            .first()
+                                            .map(|d| d.message.as_str())
+                                            .unwrap_or("unknown error")
+                                    );
+                                    continue;
+                                }
+                                return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                                    "node '{}' failed to render inv queries",
+                                    raw_node.name()
+                                )));
                             }
+                            n
+                        }
+                        Err(e) => {
                             return Err(error::to_py_err(e));
                         }
                     }

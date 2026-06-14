@@ -178,13 +178,30 @@ pub fn build_top_from(
         let merged = match inventory.merge_node(node.name()) {
             Ok(n) => n,
             Err(e) => {
-                if ignore_failed_node {
-                    tracing::warn!("Skipping node '{}': {}", node.name(), e);
-                    continue;
-                }
+                // Implementation error (I/O, etc.) — propagate
                 return Err(TopError::TopInventoryLoad { source: e });
             }
         };
+
+        if !merged.is_usable() {
+            if ignore_failed_node {
+                tracing::warn!(
+                    "Skipping failed node '{}': {}",
+                    node.name(),
+                    merged
+                        .diagnostics()
+                        .first()
+                        .map(|d| d.message.as_str())
+                        .unwrap_or("unknown error")
+                );
+                continue;
+            }
+            return Err(TopError::TopInventoryLoad {
+                source: inv::Error::NodeNotFound {
+                    node_name: node.name().to_string(),
+                },
+            });
+        }
 
         let has_inv_query = {
             let params = merged.parameters();
@@ -194,16 +211,28 @@ pub fn build_top_from(
 
         let merged = if has_inv_query {
             match inventory.merge_node_with_inventory(node.name(), &inv_map) {
-                Ok(n) => n,
-                Err(e) => {
-                    if ignore_failed_render {
-                        tracing::warn!(
-                            "Skipping node '{}': inv query render failed: {}",
-                            node.name(),
-                            e
-                        );
-                        continue;
+                Ok(n) => {
+                    if !n.is_usable() {
+                        if ignore_failed_render {
+                            tracing::warn!(
+                                "Skipping node '{}': inv query render failed: {}",
+                                node.name(),
+                                n.diagnostics()
+                                    .first()
+                                    .map(|d| d.message.as_str())
+                                    .unwrap_or("unknown error")
+                            );
+                            continue;
+                        }
+                        return Err(TopError::TopInventoryLoad {
+                            source: inv::Error::NodeNotFound {
+                                node_name: node.name().to_string(),
+                            },
+                        });
                     }
+                    n
+                }
+                Err(e) => {
                     return Err(TopError::TopInventoryLoad { source: e });
                 }
             }
@@ -271,6 +300,20 @@ pub fn build_pillar_from(
             node_name: minion_id.to_string(),
         })?;
 
+    if !merged.is_usable() {
+        let msg = merged
+            .diagnostics()
+            .first()
+            .map(|d| d.message.as_str())
+            .unwrap_or("merge failed");
+        return Err(PillarError::Merge {
+            source: Box::new(inv::Error::NodeNotFound {
+                node_name: minion_id.to_string(),
+            }),
+            node_name: format!("{}: {}", minion_id, msg),
+        });
+    }
+
     let has_inv_query = {
         let params = merged.parameters();
         params.values().any(|v| v.has_inv_query())
@@ -280,15 +323,30 @@ pub fn build_pillar_from(
     let merged = if has_inv_query {
         let inv_map = inventory.build_inventory_map().map_err(PillarError::from)?;
         match inventory.merge_node_with_inventory(minion_id, &inv_map) {
-            Ok(n) => n,
-            Err(e) => {
-                if ignore_failed_render {
-                    tracing::warn!(
-                        "Failed to render inv queries for node '{}': {}",
-                        minion_id,
-                        e
-                    );
+            Ok(n) => {
+                if !n.is_usable() {
+                    let msg = n
+                        .diagnostics()
+                        .first()
+                        .map(|d| d.message.as_str())
+                        .unwrap_or("inv query render failed");
+                    if ignore_failed_render {
+                        tracing::warn!(
+                            "Failed to render inv queries for node '{}': {}",
+                            minion_id,
+                            msg
+                        );
+                    }
+                    return Err(PillarError::Merge {
+                        source: Box::new(inv::Error::NodeNotFound {
+                            node_name: minion_id.to_string(),
+                        }),
+                        node_name: format!("{}: {}", minion_id, msg),
+                    });
                 }
+                n
+            }
+            Err(e) => {
                 return Err(PillarError::Merge {
                     source: Box::new(e),
                     node_name: minion_id.to_string(),

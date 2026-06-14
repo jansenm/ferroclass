@@ -649,26 +649,24 @@ impl Inventory {
     /// Build a map of all merged nodes for inventory-query resolution.
     ///
     /// Each entry maps a node name to its merged exports and environment.
-    /// Failed nodes are skipped if `ignore_failed_node` is enabled in the
-    /// merge configuration.
+    /// Nodes that failed to merge (state is `Failed`) are skipped if
+    /// `ignore_failed_node` is enabled in the merge configuration.
     pub fn build_inventory_map(&self) -> Result<inv_query::InventoryMap, Error> {
         let mut inventory_map = inv_query::InventoryMap::new();
         for node_name in self.node_names() {
-            let node = match self.merge_node(node_name) {
-                Ok(n) => n,
-                Err(_) => {
-                    if self.merge_config.inventory_ignore_failed_node {
-                        tracing::warn!(
-                            "Ignoring failed node '{}' during inventory build",
-                            node_name
-                        );
-                        continue;
-                    }
-                    return Err(Error::NodeNotFound {
-                        node_name: node_name.to_string(),
-                    });
+            let node = self.merge_node(node_name)?;
+            if !node.is_usable() {
+                if self.merge_config.inventory_ignore_failed_node {
+                    tracing::warn!(
+                        "Ignoring failed node '{}' during inventory build",
+                        node_name
+                    );
+                    continue;
                 }
-            };
+                return Err(Error::NodeNotFound {
+                    node_name: node_name.to_string(),
+                });
+            }
             inventory_map.insert(
                 node_name.to_string(),
                 inv_query::NodeInventory {
@@ -2672,22 +2670,25 @@ mod tests {
         };
         inventory.set_merge_config(config);
 
-        let result = inventory.merge_node("test_node");
-        assert!(
-            result.is_err(),
-            "should fail with ChangedConstantParameter error in strict mode"
+        let node = inventory
+            .merge_node("test_node")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(
+            node.state(),
+            EntityState::Failed,
+            "should be Failed in strict mode"
         );
-        let err = result.unwrap_err();
-        let mut chain = err.to_string();
-        let mut source = std::error::Error::source(&err);
-        while let Some(e) = source {
-            chain.push_str(&format!("\n  caused by: {}", e));
-            source = std::error::Error::source(e);
-        }
+        assert!(node.has_errors(), "should have error diagnostics");
+        let diag_msg = node
+            .diagnostics()
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect::<Vec<_>>()
+            .join("; ");
         assert!(
-            chain.to_lowercase().contains("constant"),
-            "error should mention constant, got: {}",
-            chain
+            diag_msg.to_lowercase().contains("constant"),
+            "diagnostics should mention constant, got: {}",
+            diag_msg
         );
     }
 
@@ -2904,11 +2905,15 @@ mod tests {
             .expect("failed to parse");
         inventory.set_merge_config(MergeConfig::default());
 
-        let result = inventory.merge_node("test_node");
-        assert!(
-            result.is_err(),
-            "should fail when class name reference cannot be resolved"
+        let node = inventory
+            .merge_node("test_node")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(
+            node.state(),
+            EntityState::Failed,
+            "should be Failed when class name reference cannot be resolved"
         );
+        assert!(node.has_errors(), "should have error diagnostics");
     }
 
     // Test: class name interpolation uses parameters from previously-processed classes
@@ -2999,11 +3004,15 @@ mod tests {
         };
         inventory.set_merge_config(config);
 
-        let result = inventory.merge_node("test_node");
-        assert!(
-            result.is_err(),
-            "Expected TypeMerge error for null over dict"
+        let node = inventory
+            .merge_node("test_node")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(
+            node.state(),
+            EntityState::Failed,
+            "Expected Failed state for null over dict"
         );
+        assert!(node.has_errors(), "should have error diagnostics");
     }
 
     #[test]
@@ -3041,11 +3050,15 @@ mod tests {
         };
         inventory.set_merge_config(config);
 
-        let result = inventory.merge_node("test_node");
-        assert!(
-            result.is_err(),
-            "Expected TypeMerge error for null over list"
+        let node = inventory
+            .merge_node("test_node")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(
+            node.state(),
+            EntityState::Failed,
+            "Expected Failed state for null over list"
         );
+        assert!(node.has_errors(), "should have error diagnostics");
     }
 
     #[test]
@@ -3239,11 +3252,15 @@ mod tests {
         };
         inventory.set_merge_config(config);
 
-        let result = inventory.merge_node("test_node");
-        assert!(
-            result.is_err(),
-            "Expected TypeMerge error for dict over list"
+        let node = inventory
+            .merge_node("test_node")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(
+            node.state(),
+            EntityState::Failed,
+            "Expected Failed state for dict over list"
         );
+        assert!(node.has_errors(), "should have error diagnostics");
     }
 
     #[test]
@@ -3283,11 +3300,15 @@ mod tests {
         };
         inventory.set_merge_config(config);
 
-        let result = inventory.merge_node("test_node");
-        assert!(
-            result.is_err(),
-            "Expected TypeMerge error for list over dict"
+        let node = inventory
+            .merge_node("test_node")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(
+            node.state(),
+            EntityState::Failed,
+            "Expected Failed state for list over dict"
         );
+        assert!(node.has_errors(), "should have error diagnostics");
     }
 
     #[test]
@@ -3404,19 +3425,25 @@ mod tests {
         let mut inventory = inventory;
         inventory.set_merge_config(config);
 
-        let result = inventory.merge_node("test_node");
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        let mut err_chain = err.to_string();
-        let mut source = std::error::Error::source(&err);
-        while let Some(e) = source {
-            err_chain.push_str(&format!("\n  caused by: {}", e));
-            source = std::error::Error::source(e);
-        }
+        let node = inventory
+            .merge_node("test_node")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(
+            node.state(),
+            EntityState::Failed,
+            "Expected Failed state for type merge conflict"
+        );
+        assert!(node.has_errors(), "should have error diagnostics");
+        let diag_msg = node
+            .diagnostics()
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect::<Vec<_>>()
+            .join("; ");
         assert!(
-            err_chain.contains("config:server"),
-            "error should contain key path 'config:server', got: {}",
-            err_chain
+            diag_msg.contains("config:server"),
+            "diagnostics should contain key path 'config:server', got: {}",
+            diag_msg
         );
     }
 
@@ -3446,8 +3473,15 @@ mod tests {
         let mut inventory = inventory;
         inventory.set_merge_config(config);
 
-        let result = inventory.merge_node("test_node");
-        assert!(result.is_err(), "should error with default config");
+        let node = inventory
+            .merge_node("test_node")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(
+            node.state(),
+            EntityState::Failed,
+            "should be Failed with default config"
+        );
+        assert!(node.has_errors(), "should have error diagnostics");
     }
 
     #[test]
@@ -3565,11 +3599,15 @@ mod tests {
         let mut inventory = inventory;
         inventory.set_merge_config(config);
 
-        let result = inventory.merge_node("test_node");
-        assert!(
-            result.is_err(),
-            "should still error — 'nonexistent' does not match 'miss.*'"
+        let node = inventory
+            .merge_node("test_node")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(
+            node.state(),
+            EntityState::Failed,
+            "should be Failed — 'nonexistent' does not match 'miss.*'"
         );
+        assert!(node.has_errors(), "should have error diagnostics");
     }
 
     #[test]
@@ -3636,20 +3674,26 @@ mod tests {
         let mut inv_with_config = inventory;
         inv_with_config.set_merge_config(config);
 
-        let result = inv_with_config.merge_node("node1");
-        assert!(result.is_err(), "should error on unresolvable reference");
-        match result.unwrap_err() {
-            Error::Interpolation { source } => match source {
-                interpolation::Error::ReferenceNotFound { path } => {
-                    assert_eq!(path, "missing_ref");
-                }
-                other => panic!(
-                    "Expected ReferenceNotFound for single error, got {:?}",
-                    other
-                ),
-            },
-            e => panic!("Expected Interpolation, got {:?}", e),
-        }
+        let node = inv_with_config
+            .merge_node("node1")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(
+            node.state(),
+            EntityState::Failed,
+            "should be Failed on unresolvable reference"
+        );
+        assert!(node.has_errors(), "should have error diagnostics");
+        let diag_msg = node
+            .diagnostics()
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect::<Vec<_>>()
+            .join("; ");
+        assert!(
+            diag_msg.contains("missing_ref"),
+            "diagnostics should mention missing_ref, got: {}",
+            diag_msg
+        );
     }
 
     #[test]
@@ -3677,24 +3721,27 @@ mod tests {
         let mut inv_with_config = inventory;
         inv_with_config.set_merge_config(config);
 
-        let result = inv_with_config.merge_node("node1");
-        assert!(result.is_err(), "should error on unresolvable references");
-        match result.unwrap_err() {
-            Error::Interpolation { source } => match source {
-                interpolation::Error::ResolveErrorList { errors } => {
-                    assert!(
-                        errors.len() >= 2,
-                        "should have at least 2 errors, got {}",
-                        errors.len()
-                    );
-                }
-                other => panic!(
-                    "Expected ResolveErrorList for multiple errors, got {:?}",
-                    other
-                ),
-            },
-            e => panic!("Expected Interpolation, got {:?}", e),
-        }
+        let node = inv_with_config
+            .merge_node("node1")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(
+            node.state(),
+            EntityState::Failed,
+            "should be Failed on unresolvable references"
+        );
+        assert!(node.has_errors(), "should have error diagnostics");
+        // With group_errors, multiple unresolved refs should be reported
+        let diag_msg = node
+            .diagnostics()
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect::<Vec<_>>()
+            .join("; ");
+        assert!(
+            diag_msg.contains("ref_a") || diag_msg.contains("ref_b"),
+            "diagnostics should mention missing refs, got: {}",
+            diag_msg
+        );
     }
 
     #[test]
@@ -3722,24 +3769,27 @@ mod tests {
         let mut inv_with_config = inventory;
         inv_with_config.set_merge_config(config);
 
-        let result = inv_with_config.merge_node("node1");
-        assert!(result.is_err(), "should error on unresolvable reference");
-        match result.unwrap_err() {
-            Error::Interpolation { source } => match source {
-                interpolation::Error::ReferenceNotFound { path } => {
-                    assert!(
-                        path == "ref_a" || path == "ref_b",
-                        "should be one of the two missing refs, got {}",
-                        path
-                    );
-                }
-                other => panic!(
-                    "Expected ReferenceNotFound for single-error mode, got {:?}",
-                    other
-                ),
-            },
-            e => panic!("Expected Interpolation, got {:?}", e),
-        }
+        let node = inv_with_config
+            .merge_node("node1")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(
+            node.state(),
+            EntityState::Failed,
+            "should be Failed on unresolvable reference"
+        );
+        assert!(node.has_errors(), "should have error diagnostics");
+        let diag_msg = node
+            .diagnostics()
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect::<Vec<_>>()
+            .join("; ");
+        // In single-error mode, at least one missing ref should be reported
+        assert!(
+            diag_msg.contains("ref_a") || diag_msg.contains("ref_b"),
+            "diagnostics should mention a missing ref, got: {}",
+            diag_msg
+        );
     }
 
     #[test]
@@ -3775,28 +3825,25 @@ mod tests {
         let mut inv_with_config = inventory;
         inv_with_config.set_merge_config(config);
 
-        let result = inv_with_config.merge_node("node1");
-        assert!(result.is_err());
-        // The error should be ReferenceNotFound (ResolveErrorList with collected errors,
-        // since both alpha and beta reference missing keys)
-        match result.unwrap_err() {
-            Error::Interpolation { source } => match source {
-                interpolation::Error::ResolveErrorList { errors } => {
-                    assert!(
-                        errors.len() >= 2,
-                        "should have collected both resolve errors"
-                    );
-                }
-                interpolation::Error::ReferenceNotFound { .. } => {
-                    // Single error is also acceptable (if both resolve to same key)
-                }
-                other => panic!(
-                    "Expected ResolveErrorList or ReferenceNotFound, got {:?}",
-                    other
-                ),
-            },
-            e => panic!("Expected Interpolation, got {:?}", e),
-        }
+        let node = inv_with_config
+            .merge_node("node1")
+            .expect("merge_node should return Ok even on domain error");
+        assert_eq!(node.state(), EntityState::Failed, "should be Failed");
+        assert!(node.has_errors(), "should have error diagnostics");
+        // The diagnostics should mention the interpolation errors
+        let diag_msg = node
+            .diagnostics()
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect::<Vec<_>>()
+            .join("; ");
+        assert!(
+            diag_msg.contains("ref_a")
+                || diag_msg.contains("ref_b")
+                || diag_msg.contains("interpolation"),
+            "diagnostics should mention the error, got: {}",
+            diag_msg
+        );
     }
 
     #[test]

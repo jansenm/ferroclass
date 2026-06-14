@@ -3,6 +3,7 @@
 
 use crate::inventory::Inventory;
 use crate::inventory::applications::Applications;
+use crate::inventory::diagnostic::{Diagnostic, EntityState};
 use crate::inventory::elements::{Class, Node};
 use crate::inventory::interpolation;
 use crate::inventory::inv_query;
@@ -29,6 +30,48 @@ pub enum Error {
     ValueMerge {
         source: crate::inventory::value_merge::Error,
     },
+}
+
+/// Create a Failed node with minimal data and a diagnostic.
+///
+/// Used when a domain error (missing class, interpolation failure, etc.)
+/// prevents successful merging. The returned node has:
+/// - The original node's name, environment, URI, and pathname
+/// - `state: Failed`
+/// - A single error diagnostic describing the problem
+/// - Empty parameters, exports, classes, and applications
+fn make_failed_node(node: &Node, message: String, code: &str) -> Node {
+    let mut builder = Node::new(node.name().to_string())
+        .environment(node.environment().clone())
+        .state(EntityState::Failed)
+        .add_diagnostic(
+            Diagnostic::error(message)
+                .with_code(code)
+                .with_subject(node.name().to_string()),
+        );
+    if let Some(uri) = node.uri() {
+        builder = builder.uri(uri.to_string());
+    }
+    if let Some(pathname) = node.pathname() {
+        builder = builder.pathname(pathname.to_string());
+    }
+    builder.build()
+}
+
+/// Create a Failed class with minimal data and a diagnostic.
+fn make_failed_class(class: &Class, message: String, code: &str) -> Class {
+    let mut builder = Class::new(class.name().to_string())
+        .environment(class.environment().clone())
+        .state(EntityState::Failed)
+        .add_diagnostic(
+            Diagnostic::error(message)
+                .with_code(code)
+                .with_subject(class.name().to_string()),
+        );
+    if let Some(uri) = class.uri() {
+        builder = builder.uri(uri.to_string());
+    }
+    builder.build()
 }
 
 #[derive(Debug, Clone)]
@@ -196,6 +239,21 @@ fn recurse_class(
     Ok(acc)
 }
 
+/// Convert a merge::Error into a descriptive message and diagnostic code.
+fn error_to_parts(error: &Error) -> (String, &'static str) {
+    match error {
+        Error::ClassNotFound { class_name } => {
+            (format!("class '{}' not found", class_name), "INV-001")
+        }
+        Error::ClassNameResolveError { class_name, .. } => (
+            format!("class name '{}' could not be resolved", class_name),
+            "INV-002",
+        ),
+        Error::Interpolation { .. } => (format!("interpolation error: {}", error), "REF-001"),
+        Error::ValueMerge { .. } => (format!("merge error: {}", error), "MERGE-001"),
+    }
+}
+
 pub(crate) fn merge_node(
     inventory: &Inventory,
     node: &Node,
@@ -232,6 +290,32 @@ pub(crate) fn merge_node_with_inventory(
 }
 
 fn merge_node_impl(
+    inventory: &Inventory,
+    node: &Node,
+    extra_classes: &[String],
+    merge_config: &MergeConfig,
+    inv_map: Option<&inv_query::InventoryMap>,
+    input_data: Option<&ParametersType>,
+) -> Result<Node, Error> {
+    match merge_node_inner(
+        inventory,
+        node,
+        extra_classes,
+        merge_config,
+        inv_map,
+        input_data,
+    ) {
+        Ok(result) => Ok(result),
+        Err(error) => {
+            // Domain errors produce a Failed node with diagnostics.
+            // Implementation errors (I/O) are propagated as Err.
+            let (message, code) = error_to_parts(&error);
+            Ok(make_failed_node(node, message, code))
+        }
+    }
+}
+
+fn merge_node_inner(
     inventory: &Inventory,
     node: &Node,
     extra_classes: &[String],
@@ -406,6 +490,20 @@ fn merge_node_impl(
 }
 
 pub(crate) fn merge_class(
+    inventory: &Inventory,
+    class: &Class,
+    merge_config: &MergeConfig,
+) -> Result<Class, Error> {
+    match merge_class_inner(inventory, class, merge_config) {
+        Ok(result) => Ok(result),
+        Err(error) => {
+            let (message, code) = error_to_parts(&error);
+            Ok(make_failed_class(class, message, code))
+        }
+    }
+}
+
+fn merge_class_inner(
     inventory: &Inventory,
     class: &Class,
     merge_config: &MergeConfig,

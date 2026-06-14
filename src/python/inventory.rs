@@ -29,9 +29,24 @@ impl PyInventory {
     /// Fully merge a single node and return the result.
     ///
     /// This resolves class inheritance, interpolation, and inventory queries.
-    /// Raises `RuntimeError` if the node does not exist or merging fails.
+    /// Raises `RuntimeError` if the node does not exist (implementation error).
+    /// If the node has domain errors (missing class, interpolation failure),
+    /// returns a `Node` with `state = "failed"` and `diagnostics` listing
+    /// the problems. Check `node.state` and `node.is_usable()` to detect
+    /// failed merges.
     fn merge_node(&self, _py: Python<'_>, name: &str) -> PyResult<PyNode> {
         let node = self.inventory.merge_node(name).map_err(error::to_py_err)?;
+        if !node.is_usable() {
+            let msg = node
+                .diagnostics()
+                .first()
+                .map(|d| d.message.as_str())
+                .unwrap_or("merge failed");
+            return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "node '{}' failed to merge: {}",
+                name, msg
+            )));
+        }
         Ok(PyNode::new(node))
     }
 

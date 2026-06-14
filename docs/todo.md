@@ -19,6 +19,10 @@
 - **DEB packaging** — Debian/Ubuntu packages
 - **CI pipeline** — GitHub Actions for build, test, clippy, coverage
 - **YAML output optimization** — Avoid intermediate Yaml tree conversion in serialization
+- **Interpolation failure → Merged state** — When interpolation fails, return `Node { state: Merged }`
+  with the merged data still intact and a diagnostic about unresolvable refs, instead of `Failed`
+  with empty data. Useful for LSP "show merged data with broken refs highlighted." Blocked on
+  refactoring the merge pipeline to produce intermediate results.
 
 ## Completed
 
