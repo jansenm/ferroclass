@@ -52,3 +52,4 @@ pub use inventory::options::{
     MergeConfig, OutputFormat, OutputOptions, ParameterKeyStyle, StorageOptions,
     StorageOptionsTrait, StorageType, YamlFileStorageOptions, YamlFsStorageOptions,
 };
+pub use inventory::diagnostic::{Diagnostic, DiagnosticSeverity, SourceLocation};

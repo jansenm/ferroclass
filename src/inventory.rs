@@ -26,6 +26,7 @@ use std::rc::Rc;
 
 pub(crate) mod applications;
 pub mod class_mapping;
+pub mod diagnostic;
 pub mod elements;
 pub(crate) mod interpolation;
 pub(crate) mod inv_query;
@@ -39,6 +40,7 @@ pub use elements::{Class, Node};
 pub use merge::Error as MergeError;
 pub use value_merge::Error as ValueMergeError;
 pub use value_merge::merge as merge_values;
+pub use diagnostic::{Diagnostic, DiagnosticSeverity, SourceLocation};
 
 pub fn create_automatic_parameters(nodename: &str, environment: &Environment) -> ParametersType {
     let short_name = nodename.split('.').next().unwrap_or(nodename);
