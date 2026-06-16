@@ -20,21 +20,24 @@ fn test_invalid_parameter_key_ansible_style() {
     "#
     );
 
-    let result = load_from_yaml_string_with_diagnostics(
-        TEST_INVENTORY,
-        &ParameterKeyStyle::Ansible,
-        None,
-    )
-    .expect("Should return Ok even with errors");
+    let result =
+        load_from_yaml_string_with_diagnostics(TEST_INVENTORY, &ParameterKeyStyle::Ansible, None)
+            .expect("Should return Ok even with errors");
     assert!(
         result.has_errors(),
         "Expected errors for invalid key, got: {:?}",
         result.diagnostics()
     );
     // The parse error should mention the class name or parameter key
-    let diag_messages: Vec<&str> = result.diagnostics().iter().map(|d| d.message.as_str()).collect();
+    let diag_messages: Vec<&str> = result
+        .diagnostics()
+        .iter()
+        .map(|d| d.message.as_str())
+        .collect();
     assert!(
-        diag_messages.iter().any(|m| m.contains("classA") || m.contains("parameter key") || m.contains("invalid-key")),
+        diag_messages.iter().any(|m| m.contains("classA")
+            || m.contains("parameter key")
+            || m.contains("invalid-key")),
         "Expected 'classA', 'parameter key', or 'invalid-key' in diagnostics: {:?}",
         diag_messages
     );
@@ -303,21 +306,24 @@ fn test_invalid_definition_unknown_key() {
     "#
     );
 
-    let result = load_from_yaml_string_with_diagnostics(
-        TEST_INVENTORY,
-        &ParameterKeyStyle::default(),
-        None,
-    )
-    .expect("Should return Ok even with errors");
+    let result =
+        load_from_yaml_string_with_diagnostics(TEST_INVENTORY, &ParameterKeyStyle::default(), None)
+            .expect("Should return Ok even with errors");
     assert!(
         result.has_errors(),
         "Expected errors for unknown key, got: {:?}",
         result.diagnostics()
     );
     // The parse error should mention the class name or the unknown_key
-    let diag_messages: Vec<&str> = result.diagnostics().iter().map(|d| d.message.as_str()).collect();
+    let diag_messages: Vec<&str> = result
+        .diagnostics()
+        .iter()
+        .map(|d| d.message.as_str())
+        .collect();
     assert!(
-        diag_messages.iter().any(|m| m.contains("classA") || m.contains("unknown_key")),
+        diag_messages
+            .iter()
+            .any(|m| m.contains("classA") || m.contains("unknown_key")),
         "Expected 'classA' or 'unknown_key' in diagnostics: {:?}",
         diag_messages
     );

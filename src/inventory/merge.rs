@@ -3,7 +3,7 @@
 
 use crate::inventory::Inventory;
 use crate::inventory::applications::Applications;
-use crate::inventory::diagnostic::{Diagnostic, EntityState};
+use crate::inventory::diagnostic::{Diagnostic, EntityState, ToDiagnostics};
 use crate::inventory::elements::{Class, Node};
 use crate::inventory::interpolation;
 use crate::inventory::inv_query;
@@ -32,23 +32,47 @@ pub enum Error {
     },
 }
 
-/// Create a Failed node with minimal data and a diagnostic.
+impl ToDiagnostics for Error {
+    fn to_diagnostics(&self) -> Vec<Diagnostic> {
+        match self {
+            Error::ClassNotFound { class_name } => {
+                vec![
+                    Diagnostic::error(format!("class '{class_name}' not found"))
+                        .with_code("INV-001")
+                        .with_subject(class_name.clone()),
+                ]
+            }
+            Error::ClassNameResolveError { class_name, source } => {
+                let mut diags = vec![
+                    Diagnostic::error(format!("class name '{class_name}' could not be resolved"))
+                        .with_code("INV-002")
+                        .with_subject(class_name.clone()),
+                ];
+                // Append the interpolation error's diagnostics for full context
+                diags.extend(source.to_diagnostics());
+                diags
+            }
+            Error::Interpolation { source } => source.to_diagnostics(),
+            Error::ValueMerge { source } => source.to_diagnostics(),
+        }
+    }
+}
+
+/// Create a Failed node with minimal data and diagnostics.
 ///
 /// Used when a domain error (missing class, interpolation failure, etc.)
 /// prevents successful merging. The returned node has:
 /// - The original node's name, environment, URI, and pathname
 /// - `state: Failed`
-/// - A single error diagnostic describing the problem
+/// - Error diagnostics from the merge error
 /// - Empty parameters, exports, classes, and applications
-fn make_failed_node(node: &Node, message: String, code: &str) -> Node {
+fn make_failed_node(node: &Node, diagnostics: Vec<Diagnostic>) -> Node {
     let mut builder = Node::new(node.name().to_string())
         .environment(node.environment().clone())
-        .state(EntityState::Failed)
-        .add_diagnostic(
-            Diagnostic::error(message)
-                .with_code(code)
-                .with_subject(node.name().to_string()),
-        );
+        .state(EntityState::Failed);
+    for diag in diagnostics {
+        builder = builder.add_diagnostic(diag);
+    }
     if let Some(uri) = node.uri() {
         builder = builder.uri(uri.to_string());
     }
@@ -58,16 +82,14 @@ fn make_failed_node(node: &Node, message: String, code: &str) -> Node {
     builder.build()
 }
 
-/// Create a Failed class with minimal data and a diagnostic.
-fn make_failed_class(class: &Class, message: String, code: &str) -> Class {
+/// Create a Failed class with minimal data and diagnostics.
+fn make_failed_class(class: &Class, diagnostics: Vec<Diagnostic>) -> Class {
     let mut builder = Class::new(class.name().to_string())
         .environment(class.environment().clone())
-        .state(EntityState::Failed)
-        .add_diagnostic(
-            Diagnostic::error(message)
-                .with_code(code)
-                .with_subject(class.name().to_string()),
-        );
+        .state(EntityState::Failed);
+    for diag in diagnostics {
+        builder = builder.add_diagnostic(diag);
+    }
     if let Some(uri) = class.uri() {
         builder = builder.uri(uri.to_string());
     }
@@ -239,33 +261,6 @@ fn recurse_class(
     Ok(acc)
 }
 
-/// Convert a merge::Error into a descriptive message and diagnostic code.
-fn error_to_parts(error: &Error) -> (String, &'static str) {
-    match error {
-        Error::ClassNotFound { class_name } => {
-            (format!("class '{}' not found", class_name), "INV-001")
-        }
-        Error::ClassNameResolveError { class_name, .. } => (
-            format!("class name '{}' could not be resolved", class_name),
-            "INV-002",
-        ),
-        Error::Interpolation { .. } => (format_error_chain(error), "REF-001"),
-        Error::ValueMerge { .. } => (format_error_chain(error), "MERGE-001"),
-    }
-}
-
-/// Format an error and its full source chain for diagnostic messages.
-fn format_error_chain(error: &dyn std::error::Error) -> String {
-    let mut message = format!("{}", error);
-    let mut source = error.source();
-    while let Some(err) = source {
-        message.push_str(": ");
-        message.push_str(&format!("{}", err));
-        source = err.source();
-    }
-    message
-}
-
 pub(crate) fn merge_node(
     inventory: &Inventory,
     node: &Node,
@@ -321,8 +316,8 @@ fn merge_node_impl(
         Err(error) => {
             // Domain errors produce a Failed node with diagnostics.
             // Implementation errors (I/O) are propagated as Err.
-            let (message, code) = error_to_parts(&error);
-            Ok(make_failed_node(node, message, code))
+            let diagnostics = error.to_diagnostics();
+            Ok(make_failed_node(node, diagnostics))
         }
     }
 }
@@ -509,8 +504,8 @@ pub(crate) fn merge_class(
     match merge_class_inner(inventory, class, merge_config) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let (message, code) = error_to_parts(&error);
-            Ok(make_failed_class(class, message, code))
+            let diagnostics = error.to_diagnostics();
+            Ok(make_failed_class(class, diagnostics))
         }
     }
 }
@@ -537,4 +532,49 @@ fn merge_class_inner(
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::inventory::diagnostic::{DiagnosticSeverity, ToDiagnostics};
+
+    #[test]
+    fn test_class_not_found_to_diagnostics() {
+        let err = Error::ClassNotFound {
+            class_name: "myclass".to_string(),
+        };
+        let diags = err.to_diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].severity, DiagnosticSeverity::Error);
+        assert_eq!(diags[0].code.as_deref(), Some("INV-001"));
+        assert_eq!(diags[0].subject.as_deref(), Some("myclass"));
+        assert!(diags[0].message.contains("myclass"));
+    }
+
+    #[test]
+    fn test_interpolation_error_to_diagnostics() {
+        let interp_err = interpolation::Error::CircularReference {
+            path: "a → b → a".to_string(),
+        };
+        let err = Error::Interpolation { source: interp_err };
+        let diags = err.to_diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code.as_deref(), Some("REF-001"));
+        assert!(diags[0].message.contains("circular reference"));
+    }
+
+    #[test]
+    fn test_value_merge_error_to_diagnostics() {
+        let vm_err = crate::inventory::value_merge::Error::TypeMerge {
+            new_type: "string",
+            existing_type: "hash",
+            context: ", at parameters:db".to_string(),
+        };
+        let err = Error::ValueMerge { source: vm_err };
+        let diags = err.to_diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code.as_deref(), Some("MERGE-001"));
+        assert!(diags[0].message.contains("cannot merge"));
+    }
 }

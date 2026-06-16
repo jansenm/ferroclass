@@ -229,7 +229,13 @@ impl fmt::Display for SourceLocation {
 /// A diagnostic message produced during loading or merging.
 ///
 /// Diagnostics carry a severity, human-readable message, optional source
-/// location, and an optional code for programmatic identification.
+/// location (for LSP/IDE tooling), and an optional code for programmatic
+/// identification.
+///
+/// The [`Display`](fmt::Display) format is `{severity}: {message} [{code}]`.
+/// The message already contains the full error chain including file paths,
+/// so `location` is NOT included in the display output — it exists as
+/// structured metadata for LSP go-to-definition and related features.
 ///
 /// Diagnostic codes follow a simple convention:
 /// - `INV-xxx`: inventory-level errors (missing class, duplicate node)
@@ -320,10 +326,7 @@ impl Diagnostic {
 
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.location {
-            Some(loc) => write!(f, "{}: {}: {}", loc, self.severity, self.message)?,
-            None => write!(f, "{}: {}", self.severity, self.message)?,
-        }
+        write!(f, "{}: {}", self.severity, self.message)?;
         if let Some(code) = &self.code {
             write!(f, " [{}]", code)?;
         }
@@ -332,6 +335,39 @@ impl fmt::Display for Diagnostic {
 }
 
 impl std::error::Error for Diagnostic {}
+
+/// Trait for converting errors into structured diagnostics.
+///
+/// Each error type knows how to extract its file path, line/column, subject,
+/// and diagnostic code. This moves the "what code, what message, what location"
+/// knowledge next to the error definition instead of scattering it across
+/// load functions and merge error handlers.
+pub trait ToDiagnostics {
+    /// Convert this error into one or more diagnostics.
+    fn to_diagnostics(&self) -> Vec<Diagnostic>;
+}
+
+/// Format an error and its full source chain for diagnostic messages.
+///
+/// Walks `std::error::Error::source()` to produce a multi-line message:
+/// the top-level error on the first line, each source cause indented on
+/// subsequent lines (prefixed with `    caused by: `).
+///
+/// Example output:
+/// ```text
+/// invalid yaml in /path/to/file.yml
+///     caused by: [91:8] while parsing a block mapping, did not find expected key
+/// ```
+pub fn format_error_chain(error: &dyn std::error::Error) -> String {
+    let mut message = format!("{}", error);
+    let mut source = error.source();
+    while let Some(err) = source {
+        message.push_str("\n    caused by: ");
+        message.push_str(&format!("{}", err));
+        source = err.source();
+    }
+    message
+}
 
 #[cfg(test)]
 mod tests {
@@ -391,14 +427,21 @@ mod tests {
 
     #[test]
     fn test_diagnostic_display_with_location() {
+        // Location is structured metadata — not part of Display output.
+        // Display format is: {severity}: {message} [{code}]
         let diag = Diagnostic::error("class not found")
             .with_location(SourceLocation::file_line_column("nodes/web.yml", 10, 5))
             .with_code("INV-001");
         let displayed = format!("{}", diag);
-        assert!(displayed.contains("nodes/web.yml:10:5"));
         assert!(displayed.contains("error"));
         assert!(displayed.contains("class not found"));
         assert!(displayed.contains("[INV-001]"));
+        // Location is still accessible as structured data
+        assert!(diag.location.is_some());
+        let loc = diag.location.unwrap();
+        assert_eq!(loc.file, Path::new("nodes/web.yml"));
+        assert_eq!(loc.line, Some(10));
+        assert_eq!(loc.column, Some(5));
     }
 
     #[test]
@@ -449,5 +492,29 @@ mod tests {
         assert_eq!(format!("{}", EntityState::Merged), "merged");
         assert_eq!(format!("{}", EntityState::Interpolated), "interpolated");
         assert_eq!(format!("{}", EntityState::Failed), "failed");
+    }
+
+    #[test]
+    fn test_format_error_chain_simple() {
+        use std::io;
+        let err = io::Error::new(io::ErrorKind::NotFound, "file not found");
+        let chain = format_error_chain(&err);
+        assert_eq!(chain, "file not found");
+    }
+
+    #[test]
+    fn test_format_error_chain_with_source() {
+        // Create a snafu error with a source chain
+        use crate::storage::file_system::Error as FsError;
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "no such file");
+        let fs_err = FsError::Io {
+            source: io_err,
+            path: "/etc/reclass/nodes/web.yml".to_string(),
+        };
+        let chain = format_error_chain(&fs_err);
+        assert!(chain.contains("/etc/reclass/nodes/web.yml"));
+        assert!(chain.contains("no such file"));
+        // Source chain should use "caused by" format
+        assert!(chain.contains("caused by:"));
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <ferroclass@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+use crate::inventory::diagnostic::{Diagnostic, ToDiagnostics};
 use crate::inventory::options::MergeConfig;
 use crate::inventory::value::{Hash, Key, Value};
 use snafu::Snafu;
@@ -14,6 +15,25 @@ pub enum Error {
         existing_type: &'static str,
         context: String,
     },
+}
+
+impl ToDiagnostics for Error {
+    fn to_diagnostics(&self) -> Vec<Diagnostic> {
+        match self {
+            Error::TypeMerge {
+                new_type,
+                existing_type,
+                context,
+            } => {
+                vec![
+                    Diagnostic::error(format!(
+                        "cannot merge {new_type} into {existing_type}{context}"
+                    ))
+                    .with_code("MERGE-001"),
+                ]
+            }
+        }
+    }
 }
 
 fn format_path(path: &[String]) -> String {
@@ -1379,5 +1399,20 @@ mod tests {
             }
             _ => panic!("Expected Hash"),
         }
+    }
+
+    #[test]
+    fn test_type_merge_to_diagnostics() {
+        use crate::inventory::diagnostic::{DiagnosticSeverity, ToDiagnostics};
+        let err = Error::TypeMerge {
+            new_type: "string",
+            existing_type: "hash",
+            context: ", at parameters:db".to_string(),
+        };
+        let diags = err.to_diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].severity, DiagnosticSeverity::Error);
+        assert_eq!(diags[0].code.as_deref(), Some("MERGE-001"));
+        assert!(diags[0].message.contains("cannot merge string into hash"));
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Michael Jansen <ferroclass@michael-jansen.biz>
 // SPDX-License-Identifier: MPL-2.0
 
+use crate::inventory::diagnostic::{Diagnostic, ToDiagnostics};
 use crate::inventory::inv_query::InventoryMap;
 use crate::inventory::options::MergeConfig;
 use crate::inventory::types::Environment;
@@ -78,6 +79,36 @@ impl fmt::Display for ResolveErrorList {
             write!(f, "  {error}")?;
         }
         Ok(())
+    }
+}
+
+impl ToDiagnostics for Error {
+    fn to_diagnostics(&self) -> Vec<Diagnostic> {
+        match self {
+            Error::CircularReference { path } => {
+                vec![Diagnostic::error(format!("circular reference: {path}")).with_code("REF-001")]
+            }
+            Error::ReferenceNotFound { path } => {
+                vec![Diagnostic::error(format!("reference not found: {path}")).with_code("REF-001")]
+            }
+            Error::ChangedConstantParameter { path } => {
+                vec![
+                    Diagnostic::error(format!("constant parameter was modified at {path}"))
+                        .with_code("REF-001"),
+                ]
+            }
+            Error::TypeMerge { .. } => {
+                vec![
+                    Diagnostic::error(crate::inventory::diagnostic::format_error_chain(self))
+                        .with_code("REF-001"),
+                ]
+            }
+            Error::ResolveErrorList { errors } => errors
+                .errors
+                .iter()
+                .flat_map(|e| e.to_diagnostics())
+                .collect(),
+        }
     }
 }
 
@@ -1675,5 +1706,47 @@ mod tests {
             result
         );
         assert_eq!(v, Value::String("override".to_string()));
+    }
+
+    #[test]
+    fn test_circular_reference_to_diagnostics() {
+        use crate::inventory::diagnostic::{DiagnosticSeverity, ToDiagnostics};
+        let err = Error::CircularReference {
+            path: "a → b → a".to_string(),
+        };
+        let diags = err.to_diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].severity, DiagnosticSeverity::Error);
+        assert_eq!(diags[0].code.as_deref(), Some("REF-001"));
+        assert!(diags[0].message.contains("circular reference"));
+    }
+
+    #[test]
+    fn test_reference_not_found_to_diagnostics() {
+        use crate::inventory::diagnostic::ToDiagnostics;
+        let err = Error::ReferenceNotFound {
+            path: "parameters:db:host".to_string(),
+        };
+        let diags = err.to_diagnostics();
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code.as_deref(), Some("REF-001"));
+        assert!(diags[0].message.contains("reference not found"));
+    }
+
+    #[test]
+    fn test_resolve_error_list_to_diagnostics() {
+        use crate::inventory::diagnostic::ToDiagnostics;
+        let mut list = ResolveErrorList::new();
+        list.add(Error::CircularReference {
+            path: "a → b".to_string(),
+        });
+        list.add(Error::ReferenceNotFound {
+            path: "params:x".to_string(),
+        });
+        let err = Error::ResolveErrorList { errors: list };
+        let diags = err.to_diagnostics();
+        assert_eq!(diags.len(), 2);
+        assert_eq!(diags[0].code.as_deref(), Some("REF-001"));
+        assert_eq!(diags[1].code.as_deref(), Some("REF-001"));
     }
 }

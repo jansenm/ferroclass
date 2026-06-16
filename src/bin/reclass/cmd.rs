@@ -45,11 +45,9 @@ fn check_diagnostics(result: &inv::LoadResult) -> Result<(), Error> {
 
     for diag in diagnostics {
         match diag.severity {
-            inv::DiagnosticSeverity::Error => {
+            inv::DiagnosticSeverity::Error | inv::DiagnosticSeverity::Warning => {
                 eprintln!("{}", diag);
-            }
-            inv::DiagnosticSeverity::Warning => {
-                eprintln!("{}", diag);
+                eprintln!();
             }
             inv::DiagnosticSeverity::Info => {
                 tracing::info!("{}", diag);

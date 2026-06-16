@@ -37,7 +37,7 @@ pub mod types;
 pub mod value;
 pub(crate) mod value_merge;
 
-pub use diagnostic::{Diagnostic, DiagnosticSeverity, EntityState, SourceLocation};
+pub use diagnostic::{Diagnostic, DiagnosticSeverity, EntityState, SourceLocation, ToDiagnostics};
 pub use elements::{Class, Node};
 pub use merge::Error as MergeError;
 pub use value_merge::Error as ValueMergeError;
@@ -362,10 +362,7 @@ impl Inventory {
     pub fn add_node(&mut self, node: Node) {
         let name = node.name().to_string();
         if self.nodes.contains_key(&name) {
-            tracing::warn!(
-                "duplicate node name '{}': skipping",
-                name
-            );
+            tracing::warn!("duplicate node name '{}': skipping", name);
             self.diagnostics.push(
                 Diagnostic::warning(format!("duplicate node name '{}': skipping", name))
                     .with_code("INV-003")
@@ -756,7 +753,9 @@ impl LoadResult {
 
     /// Return whether any diagnostic has `Error` severity.
     pub fn has_errors(&self) -> bool {
-        self.diagnostics.iter().any(|d| d.severity == DiagnosticSeverity::Error)
+        self.diagnostics
+            .iter()
+            .any(|d| d.severity == DiagnosticSeverity::Error)
     }
 
     /// Consume the `LoadResult` and return the `Inventory`.
@@ -798,18 +797,6 @@ impl From<merge::Error> for Error {
             merge::Error::ValueMerge { source } => Error::ValueMerge { source },
         }
     }
-}
-
-/// Format an error and its full source chain for diagnostic messages.
-fn format_error_chain(error: &dyn std::error::Error) -> String {
-    let mut message = format!("{}", error);
-    let mut source = error.source();
-    while let Some(err) = source {
-        message.push_str(": ");
-        message.push_str(&format!("{}", err));
-        source = err.source();
-    }
-    message
 }
 
 /// Load an inventory from a storage backend (directory tree or single file).
@@ -920,11 +907,8 @@ pub fn load_from_yaml_string_with_diagnostics(
         }
         Err(e) => {
             // For single-string loads, a parse error is fatal — we can't
-            // even partially load. Add it as a diagnostic.
-            diagnostics.push(
-                Diagnostic::error(format_error_chain(&e))
-                    .with_code("PARSE-001"),
-                );
+            // even partially load. Add as diagnostics.
+            diagnostics.extend(e.to_diagnostics());
         }
     }
 
@@ -961,10 +945,7 @@ fn load_yaml_fs_with_diagnostics(
             Ok(class) => inventory.add_class(class),
             Err(e) => {
                 // Collect per-class errors as diagnostics instead of aborting
-                diagnostics.push(
-                    Diagnostic::error(format_error_chain(&e))
-                        .with_code("PARSE-002"),
-                );
+                diagnostics.extend(e.to_diagnostics());
             }
         }
     }
@@ -979,10 +960,7 @@ fn load_yaml_fs_with_diagnostics(
             Ok(node) => inventory.add_node(node),
             Err(e) => {
                 // Collect per-node errors as diagnostics instead of aborting
-                diagnostics.push(
-                    Diagnostic::error(format_error_chain(&e))
-                        .with_code("PARSE-003"),
-                );
+                diagnostics.extend(e.to_diagnostics());
             }
         }
     }
@@ -1026,11 +1004,8 @@ fn load_yaml_file_with_diagnostics(
         }
         Err(e) => {
             // For single-file loads, a parse error is fatal — we can't
-            // even partially load. Add it as a diagnostic.
-            diagnostics.push(
-                Diagnostic::error(format_error_chain(&e))
-                    .with_code("PARSE-001"),
-            );
+            // even partially load. Add as diagnostics.
+            diagnostics.extend(e.to_diagnostics());
         }
     }
 
@@ -3803,11 +3778,18 @@ mod tests {
         // Second node with same name should be skipped; a warning diagnostic
         // should be recorded on the inventory.
         assert!(
-            inventory.diagnostics().iter().any(|d| d.code.as_deref() == Some("INV-003")),
+            inventory
+                .diagnostics()
+                .iter()
+                .any(|d| d.code.as_deref() == Some("INV-003")),
             "should warn on duplicate node name"
         );
         assert_eq!(
-            inventory.diagnostics().iter().filter(|d| d.code.as_deref() == Some("INV-003")).count(),
+            inventory
+                .diagnostics()
+                .iter()
+                .filter(|d| d.code.as_deref() == Some("INV-003"))
+                .count(),
             1,
             "should have exactly one INV-003 diagnostic"
         );
@@ -3822,7 +3804,10 @@ mod tests {
         inventory.add_node(node1);
         inventory.add_node(node2);
         assert!(
-            !inventory.diagnostics().iter().any(|d| d.code.as_deref() == Some("INV-003")),
+            !inventory
+                .diagnostics()
+                .iter()
+                .any(|d| d.code.as_deref() == Some("INV-003")),
             "different names should not produce duplicate warning"
         );
     }
@@ -5314,12 +5299,9 @@ mod tests {
             "#
         );
 
-        let result = load_from_yaml_string_with_diagnostics(
-            GOOD_INVENTORY,
-            &ParameterKeyStyle::None,
-            None,
-        )
-        .expect("Should load successfully");
+        let result =
+            load_from_yaml_string_with_diagnostics(GOOD_INVENTORY, &ParameterKeyStyle::None, None)
+                .expect("Should load successfully");
 
         assert!(
             !result.has_errors(),
@@ -5346,12 +5328,9 @@ mod tests {
             "#
         );
 
-        let result = load_from_yaml_string_with_diagnostics(
-            INVENTORY,
-            &ParameterKeyStyle::None,
-            None,
-        )
-        .expect("Should load successfully");
+        let result =
+            load_from_yaml_string_with_diagnostics(INVENTORY, &ParameterKeyStyle::None, None)
+                .expect("Should load successfully");
 
         let inventory = result.into_inventory();
         assert!(

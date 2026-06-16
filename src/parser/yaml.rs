@@ -13,6 +13,33 @@ pub enum Error {
     MultiDocumentError {},
 }
 
+impl Error {
+    /// Returns the (line, column) from the underlying ScanError, if available.
+    ///
+    /// Line and column are 1-based (the same format used by yaml_rust2 markers).
+    pub fn line_col(&self) -> Option<(usize, usize)> {
+        match self {
+            Error::InvalidYamlError { source } => {
+                let marker = source.marker();
+                Some((marker.line(), marker.col()))
+            }
+            Error::MultiDocumentError {} => None,
+        }
+    }
+
+    /// Returns just the error description, without the `[line:col]` prefix.
+    ///
+    /// The `Display` impl includes `[line:col]` which duplicates information
+    /// that `SourceLocation` already carries. Use this when constructing
+    /// diagnostics so the message doesn't repeat location info.
+    pub fn description(&self) -> String {
+        match self {
+            Error::InvalidYamlError { source } => source.info().to_string(),
+            Error::MultiDocumentError {} => "multi-document YAML is not supported".to_string(),
+        }
+    }
+}
+
 pub trait Parser {
     fn parse(&self, definition: &str) -> Result<Value, Error>;
 }
