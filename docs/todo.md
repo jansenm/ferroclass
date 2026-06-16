@@ -53,6 +53,23 @@
 - **Ergonomic API improvements** — `node_names()` returns `impl Iterator<Item = &str>`,
   `Class::name()` and `Node::name()` return `&str`, setters accept `impl Into<String>`.
   Available since 0.13.0.
+- **Query API** — `find_nodes_by_class()`, `find_nodes_by_resolved_class()`,
+  `find_nodes_by_environment()`, `search_nodes()`, `class_names()`. Reverse
+  indexes (`class_to_nodes`, `environment_to_nodes`) built lazily. Available
+  since 0.13.0.
+- **EntityState and collect-and-continue for merge** — `EntityState` enum with
+  four pipeline stages (`Source`, `Merged`, `Interpolated`, `Failed`). Domain
+  errors (missing class, interpolation failure, type conflicts) now produce
+  `Ok(Failed)` nodes/classes with diagnostics instead of `Err`. Per-entity
+  diagnostic summaries with 0-or-1 invariant via `HashMap<String, Diagnostic>`.
+  `Inventory::state()` returns aggregate minimum. Available since 0.14.0.
+- **Collect-and-continue for loading** — `load_with_diagnostics()` returns
+  `LoadResult` with both `Inventory` and `Vec<Diagnostic>`. Per-file parse
+  errors are collected as diagnostics instead of aborting. `add_node()` now
+  accepts duplicate names as warnings (INV-003) instead of returning `Err`.
+  `load()` preserved for backward compatibility. Diagnostic codes: PARSE-001
+  (single-file parse error), PARSE-002 (class load error), PARSE-003 (node
+  load error), INV-003 (duplicate node name).
 
 ## Deferred Indefinitely
 

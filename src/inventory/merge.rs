@@ -249,9 +249,21 @@ fn error_to_parts(error: &Error) -> (String, &'static str) {
             format!("class name '{}' could not be resolved", class_name),
             "INV-002",
         ),
-        Error::Interpolation { .. } => (format!("interpolation error: {}", error), "REF-001"),
-        Error::ValueMerge { .. } => (format!("merge error: {}", error), "MERGE-001"),
+        Error::Interpolation { .. } => (format_error_chain(error), "REF-001"),
+        Error::ValueMerge { .. } => (format_error_chain(error), "MERGE-001"),
     }
+}
+
+/// Format an error and its full source chain for diagnostic messages.
+fn format_error_chain(error: &dyn std::error::Error) -> String {
+    let mut message = format!("{}", error);
+    let mut source = error.source();
+    while let Some(err) = source {
+        message.push_str(": ");
+        message.push_str(&format!("{}", err));
+        source = err.source();
+    }
+    message
 }
 
 pub(crate) fn merge_node(

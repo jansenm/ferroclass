@@ -348,22 +348,31 @@ impl Inventory {
 
     /// Add a node to the inventory.
     ///
-    /// Returns an error if a node with the same name already exists.
+    /// If a node with the same name already exists, the duplicate is logged
+    /// as a warning diagnostic and the new node is **skipped** (the existing
+    /// node is kept). This prevents a single bad file from aborting the
+    /// entire load.
+    ///
     /// The inventory's per-entity diagnostic for this node is automatically
     /// synced: if the node has problems, a summary diagnostic is added;
     /// if not, any previous summary diagnostic for this node is removed.
     ///
     /// This method invalidates reverse indexes since the new node
     /// may introduce new class-node or environment-node mappings.
-    pub fn add_node(&mut self, node: Node) -> Result<(), Error> {
-        if let Some(existing) = self.nodes.get(node.name()) {
-            return Err(Error::DuplicateNodeName {
-                name: node.name().to_string(),
-                existing_uri: existing.uri().unwrap_or("").to_string(),
-                new_uri: node.uri().unwrap_or("").to_string(),
-            });
-        }
+    pub fn add_node(&mut self, node: Node) {
         let name = node.name().to_string();
+        if self.nodes.contains_key(&name) {
+            tracing::warn!(
+                "duplicate node name '{}': skipping",
+                name
+            );
+            self.diagnostics.push(
+                Diagnostic::warning(format!("duplicate node name '{}': skipping", name))
+                    .with_code("INV-003")
+                    .with_subject(name.clone()),
+            );
+            return;
+        }
         // Remove any stale summary diagnostic for this node
         self.entity_diagnostics.remove(&name);
 
@@ -382,7 +391,6 @@ impl Inventory {
         // Invalidate indexes since the new node adds class-node and env-node mappings
         self.class_to_nodes_index = None;
         self.environment_to_nodes_index = None;
-        Ok(())
     }
 
     /// Iterate over all loaded nodes.
@@ -703,6 +711,63 @@ impl Inventory {
     }
 }
 
+/// The result of loading an inventory, including any diagnostics
+/// collected during the load process.
+///
+/// Per-entity load errors (YAML parse errors, invalid definitions,
+/// duplicate node names) are collected as diagnostics rather than
+/// aborting the entire load. Fatal errors (can't read directory,
+/// can't create repository) still return `Err`.
+///
+/// Callers should check `result.has_errors()` before using the
+/// inventory. Even if there are warnings, the inventory data is
+/// usable — but if there are errors, some entities may be missing
+/// or incomplete.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use ferroclass::{load_with_diagnostics, StorageOptions};
+///
+/// let result = load_with_diagnostics(&options.storage_options)?;
+/// if result.has_errors() {
+///     for diag in result.diagnostics() {
+///         eprintln!("{}", diag);
+///     }
+/// }
+/// let inventory = result.into_inventory();
+/// ```
+#[derive(Debug)]
+pub struct LoadResult {
+    inventory: Inventory,
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl LoadResult {
+    /// Return a reference to the loaded inventory.
+    pub fn inventory(&self) -> &Inventory {
+        &self.inventory
+    }
+
+    /// Return the diagnostics collected during loading.
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    /// Return whether any diagnostic has `Error` severity.
+    pub fn has_errors(&self) -> bool {
+        self.diagnostics.iter().any(|d| d.severity == DiagnosticSeverity::Error)
+    }
+
+    /// Consume the `LoadResult` and return the `Inventory`.
+    ///
+    /// This is the most common way to extract the inventory when you
+    /// don't need the diagnostics anymore.
+    pub fn into_inventory(self) -> Inventory {
+        self.inventory
+    }
+}
+
 /// Errors that can occur during inventory loading or node/class merging.
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -719,12 +784,6 @@ pub enum Error {
     Interpolation { source: interpolation::Error },
     #[snafu(transparent)]
     ValueMerge { source: value_merge::Error },
-    #[snafu(display("node '{name}' defined in both '{existing_uri}' and '{new_uri}'"))]
-    DuplicateNodeName {
-        name: String,
-        existing_uri: String,
-        new_uri: String,
-    },
 }
 
 impl From<merge::Error> for Error {
@@ -741,16 +800,67 @@ impl From<merge::Error> for Error {
     }
 }
 
+/// Format an error and its full source chain for diagnostic messages.
+fn format_error_chain(error: &dyn std::error::Error) -> String {
+    let mut message = format!("{}", error);
+    let mut source = error.source();
+    while let Some(err) = source {
+        message.push_str(": ");
+        message.push_str(&format!("{}", err));
+        source = err.source();
+    }
+    message
+}
+
 /// Load an inventory from a storage backend (directory tree or single file).
 ///
 /// This is the primary entry point for loading inventory data. The storage
 /// backend and path are determined by [`StorageOptions`].
 ///
+/// Per-entity load errors (YAML parse errors, invalid definitions,
+/// duplicate node names) are collected as diagnostics on the returned
+/// `Inventory` instead of aborting. Only truly fatal errors (can't
+/// read directory, invalid repository path) return `Err`.
+///
+/// To also get the diagnostics, use [`load_with_diagnostics`] which
+/// returns a [`LoadResult`] instead.
+///
 /// [`StorageOptions`]: crate::inventory::options::StorageOptions
 pub fn load(storage_options: &StorageOptions) -> Result<Inventory, Error> {
+    let result = load_with_diagnostics(storage_options)?;
+    Ok(result.into_inventory())
+}
+
+/// Load an inventory from a storage backend, returning diagnostics.
+///
+/// Like [`load`], but returns a [`LoadResult`] that includes both the
+/// inventory and any diagnostics collected during loading. Per-entity
+/// errors (YAML parse errors, invalid definitions, duplicate node names)
+/// are collected as diagnostics rather than aborting the entire load.
+///
+/// Only truly fatal errors (can't read directory, invalid repository path)
+/// return `Err`. Even if `Ok(result)` is returned, check
+/// `result.has_errors()` to see if any files failed to load.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use ferroclass::{load_with_diagnostics, StorageOptions};
+///
+/// let result = load_with_diagnostics(&options.storage_options)?;
+/// if result.has_errors() {
+///     for diag in result.diagnostics() {
+///         eprintln!("{}", diag);
+///     }
+/// }
+/// let inventory = result.into_inventory();
+/// ```
+pub fn load_with_diagnostics(storage_options: &StorageOptions) -> Result<LoadResult, Error> {
     match storage_options.storage_type {
-        StorageType::YamlFs => load_yaml_fs(&storage_options.yaml_fs_options),
-        StorageType::YamlFile => load_yaml_file(&storage_options.yaml_file_options),
+        StorageType::YamlFs => load_yaml_fs_with_diagnostics(&storage_options.yaml_fs_options),
+        StorageType::YamlFile => {
+            load_yaml_file_with_diagnostics(&storage_options.yaml_file_options)
+        }
     }
 }
 
@@ -774,29 +884,66 @@ pub fn load_from_yaml_string_with_uri(
     parameter_key_style: &options::ParameterKeyStyle,
     base_uri: Option<&str>,
 ) -> Result<Inventory, Error> {
+    let result =
+        load_from_yaml_string_with_diagnostics(yaml_content, parameter_key_style, base_uri)?;
+    Ok(result.into_inventory())
+}
+
+/// Load an inventory from a YAML string, returning diagnostics.
+///
+/// Like [`load_from_yaml_string`], but returns a [`LoadResult`] that
+/// includes both the inventory and any diagnostics collected during loading.
+pub fn load_from_yaml_string_with_diagnostics(
+    yaml_content: &str,
+    parameter_key_style: &options::ParameterKeyStyle,
+    base_uri: Option<&str>,
+) -> Result<LoadResult, Error> {
     let default_environment = Environment::default();
-    let (_metadata, classes, nodes) = file_system::YamlFileRepository::load_from_string(
+    let result = file_system::YamlFileRepository::load_from_string(
         yaml_content,
         parameter_key_style,
         base_uri,
         &default_environment,
-    )
-    .context(RepositorySnafu {
-        base_uri: base_uri.unwrap_or("<memory>").to_string(),
-    })?;
+    );
+
     let mut inventory = Inventory::new();
-    for class in classes {
-        inventory.add_class(class);
+    let mut diagnostics = Vec::new();
+
+    match result {
+        Ok((_metadata, classes, nodes)) => {
+            for class in classes {
+                inventory.add_class(class);
+            }
+            for node in nodes {
+                inventory.add_node(node);
+            }
+        }
+        Err(e) => {
+            // For single-string loads, a parse error is fatal — we can't
+            // even partially load. Add it as a diagnostic.
+            diagnostics.push(
+                Diagnostic::error(format_error_chain(&e))
+                    .with_code("PARSE-001"),
+                );
+        }
     }
-    for node in nodes {
-        inventory.add_node(node)?;
-    }
-    Ok(inventory)
+
+    // Collect any diagnostics that were added during loading (e.g., duplicate nodes)
+    diagnostics.extend(inventory.diagnostics().iter().cloned());
+
+    Ok(LoadResult {
+        inventory,
+        diagnostics,
+    })
 }
 
-fn load_yaml_fs(storage_options: &YamlFsStorageOptions) -> Result<Inventory, Error> {
+fn load_yaml_fs_with_diagnostics(
+    storage_options: &YamlFsStorageOptions,
+) -> Result<LoadResult, Error> {
     let base_uri = storage_options.inventory_base_uri.clone();
     let mut inventory = Inventory::new();
+    let mut diagnostics = Vec::new();
+
     let repo = file_system::YamlFsRepository::new(
         storage_options,
         storage_options.parameter_key_style.clone(),
@@ -808,14 +955,16 @@ fn load_yaml_fs(storage_options: &YamlFsStorageOptions) -> Result<Inventory, Err
         path = storage_options.classes_path().to_string_lossy().as_ref(),
         "loading classes"
     );
-    for class in repo.classes_iter() {
-        match class {
+
+    for class_result in repo.classes_iter() {
+        match class_result {
             Ok(class) => inventory.add_class(class),
             Err(e) => {
-                return Err(Error::Repository {
-                    source: e,
-                    base_uri: base_uri.clone(),
-                });
+                // Collect per-class errors as diagnostics instead of aborting
+                diagnostics.push(
+                    Diagnostic::error(format_error_chain(&e))
+                        .with_code("PARSE-002"),
+                );
             }
         }
     }
@@ -825,23 +974,35 @@ fn load_yaml_fs(storage_options: &YamlFsStorageOptions) -> Result<Inventory, Err
         "loading nodes"
     );
 
-    for node in repo.nodes_iter() {
-        match node {
-            Ok(node) => inventory.add_node(node)?,
+    for node_result in repo.nodes_iter() {
+        match node_result {
+            Ok(node) => inventory.add_node(node),
             Err(e) => {
-                return Err(Error::Repository {
-                    source: e,
-                    base_uri: base_uri.clone(),
-                });
+                // Collect per-node errors as diagnostics instead of aborting
+                diagnostics.push(
+                    Diagnostic::error(format_error_chain(&e))
+                        .with_code("PARSE-003"),
+                );
             }
         }
     }
-    Ok(inventory)
+
+    // Collect any diagnostics that were added during loading (e.g., duplicate nodes)
+    diagnostics.extend(inventory.diagnostics().iter().cloned());
+
+    Ok(LoadResult {
+        inventory,
+        diagnostics,
+    })
 }
 
-fn load_yaml_file(storage_options: &YamlFileStorageOptions) -> Result<Inventory, Error> {
+fn load_yaml_file_with_diagnostics(
+    storage_options: &YamlFileStorageOptions,
+) -> Result<LoadResult, Error> {
     let base_uri = storage_options.inventory_file.clone();
     let mut inventory = Inventory::new();
+    let mut diagnostics = Vec::new();
+
     let repo = file_system::YamlFileRepository::new(
         storage_options,
         storage_options.parameter_key_style.clone(),
@@ -854,15 +1015,32 @@ fn load_yaml_file(storage_options: &YamlFileStorageOptions) -> Result<Inventory,
         "loading from YAML file"
     );
 
-    let (_metadata, classes, nodes) = repo.load().context(RepositorySnafu { base_uri })?;
+    match repo.load() {
+        Ok((_metadata, classes, nodes)) => {
+            for class in classes {
+                inventory.add_class(class);
+            }
+            for node in nodes {
+                inventory.add_node(node);
+            }
+        }
+        Err(e) => {
+            // For single-file loads, a parse error is fatal — we can't
+            // even partially load. Add it as a diagnostic.
+            diagnostics.push(
+                Diagnostic::error(format_error_chain(&e))
+                    .with_code("PARSE-001"),
+            );
+        }
+    }
 
-    for class in classes {
-        inventory.add_class(class);
-    }
-    for node in nodes {
-        inventory.add_node(node)?;
-    }
-    Ok(inventory)
+    // Collect any diagnostics that were added during loading (e.g., duplicate nodes)
+    diagnostics.extend(inventory.diagnostics().iter().cloned());
+
+    Ok(LoadResult {
+        inventory,
+        diagnostics,
+    })
 }
 
 #[cfg(test)]
@@ -3620,21 +3798,19 @@ mod tests {
             .build();
 
         let mut inventory = Inventory::new();
-        inventory.add_node(node1).unwrap();
-        let result = inventory.add_node(node2);
-        assert!(result.is_err(), "should error on duplicate node name");
-        match result.unwrap_err() {
-            Error::DuplicateNodeName {
-                name,
-                existing_uri,
-                new_uri,
-            } => {
-                assert_eq!(name, "server");
-                assert_eq!(existing_uri, "yaml_fs:///nodes/alpha/server.yml");
-                assert_eq!(new_uri, "yaml_fs:///nodes/beta/server.yml");
-            }
-            e => panic!("Expected DuplicateNodeName, got {:?}", e),
-        }
+        inventory.add_node(node1);
+        inventory.add_node(node2);
+        // Second node with same name should be skipped; a warning diagnostic
+        // should be recorded on the inventory.
+        assert!(
+            inventory.diagnostics().iter().any(|d| d.code.as_deref() == Some("INV-003")),
+            "should warn on duplicate node name"
+        );
+        assert_eq!(
+            inventory.diagnostics().iter().filter(|d| d.code.as_deref() == Some("INV-003")).count(),
+            1,
+            "should have exactly one INV-003 diagnostic"
+        );
     }
 
     #[test]
@@ -3643,9 +3819,12 @@ mod tests {
         let node2 = Node::new("beta.server".to_string()).build();
 
         let mut inventory = Inventory::new();
-        inventory.add_node(node1).unwrap();
-        let result = inventory.add_node(node2);
-        assert!(result.is_ok(), "different names should not collide");
+        inventory.add_node(node1);
+        inventory.add_node(node2);
+        assert!(
+            !inventory.diagnostics().iter().any(|d| d.code.as_deref() == Some("INV-003")),
+            "different names should not produce duplicate warning"
+        );
     }
 
     // --- group_errors integration tests ---
@@ -4919,7 +5098,7 @@ mod tests {
         let new_node = crate::inventory::elements::Node::new("node2".to_string())
             .classes(vec!["base".to_string()])
             .build();
-        inventory.add_node(new_node).expect("should add node");
+        inventory.add_node(new_node);
 
         // Without rebuilding indexes, find_nodes_by_class falls back to linear scan
         // which should find both nodes
@@ -4955,7 +5134,7 @@ mod tests {
         let failed_node = Node::new("web01.example.com".to_string())
             .state(EntityState::Failed)
             .build();
-        inventory.add_node(failed_node).expect("should add node");
+        inventory.add_node(failed_node);
         assert_eq!(inventory.state(), EntityState::Failed);
     }
 
@@ -4968,10 +5147,8 @@ mod tests {
         let node_interpolated = Node::new("web02.example.com".to_string())
             .state(EntityState::Interpolated)
             .build();
-        inventory.add_node(node_merged).expect("should add node");
-        inventory
-            .add_node(node_interpolated)
-            .expect("should add node");
+        inventory.add_node(node_merged);
+        inventory.add_node(node_interpolated);
         // Worst state is Merged, so inventory is Merged
         assert_eq!(inventory.state(), EntityState::Merged);
     }
@@ -4983,7 +5160,7 @@ mod tests {
             .state(EntityState::Failed)
             .add_diagnostic(Diagnostic::error("class not found"))
             .build();
-        inventory.add_node(failed_node).expect("should add node");
+        inventory.add_node(failed_node);
 
         // Inventory should have an entity diagnostic for the failed node
         let all_diag = inventory.all_diagnostics();
@@ -5003,7 +5180,7 @@ mod tests {
         let good_node = Node::new("web01.example.com".to_string())
             .state(EntityState::Interpolated)
             .build();
-        inventory.add_node(good_node).expect("should add node");
+        inventory.add_node(good_node);
 
         // No entity diagnostics for a healthy node
         let all_diag = inventory.all_diagnostics();
@@ -5022,7 +5199,7 @@ mod tests {
             .state(EntityState::Failed)
             .add_diagnostic(Diagnostic::error("class not found"))
             .build();
-        inventory.add_node(failed_node).expect("should add node");
+        inventory.add_node(failed_node);
         assert_eq!(inventory.all_diagnostics().len(), 1);
 
         // Add a failed class — should get a diagnostic too
@@ -5079,11 +5256,143 @@ mod tests {
             .state(EntityState::Failed)
             .add_diagnostic(Diagnostic::error("something broke"))
             .build();
-        inventory.add_node(failed_node).expect("should add node");
+        inventory.add_node(failed_node);
 
         assert!(
             inventory.has_errors(),
             "inventory with failed node should report errors"
+        );
+    }
+
+    #[test]
+    fn test_load_with_diagnostics_collects_parse_errors() {
+        use indoc::indoc;
+
+        // Invalid YAML content with a bad key
+        const BAD_INVENTORY: &str = indoc!(
+            r#"
+            ---
+            ---
+            name: classA
+            parameters:
+                valid_key: value
+                invalid-key: value
+            "#
+        );
+
+        let result = load_from_yaml_string_with_diagnostics(
+            BAD_INVENTORY,
+            &ParameterKeyStyle::Ansible,
+            None,
+        )
+        .expect("Should return Ok even with errors");
+
+        assert!(
+            result.has_errors(),
+            "Should have errors for invalid key: {:?}",
+            result.diagnostics()
+        );
+        // The inventory should be empty since the class could not be parsed
+        assert_eq!(
+            result.inventory().class_names().count(),
+            0,
+            "Invalid class should not be in inventory"
+        );
+    }
+
+    #[test]
+    fn test_load_with_diagnostics_success() {
+        use indoc::indoc;
+
+        const GOOD_INVENTORY: &str = indoc!(
+            r#"
+            ---
+            ---
+            name: myclass
+            parameters:
+                key: value
+            "#
+        );
+
+        let result = load_from_yaml_string_with_diagnostics(
+            GOOD_INVENTORY,
+            &ParameterKeyStyle::None,
+            None,
+        )
+        .expect("Should load successfully");
+
+        assert!(
+            !result.has_errors(),
+            "Should have no errors: {:?}",
+            result.diagnostics()
+        );
+        assert!(
+            result.inventory().get_class("myclass").is_some(),
+            "Class should be loaded"
+        );
+    }
+
+    #[test]
+    fn test_load_result_into_inventory() {
+        use indoc::indoc;
+
+        const INVENTORY: &str = indoc!(
+            r#"
+            ---
+            ---
+            name: base
+            parameters:
+                role: server
+            "#
+        );
+
+        let result = load_from_yaml_string_with_diagnostics(
+            INVENTORY,
+            &ParameterKeyStyle::None,
+            None,
+        )
+        .expect("Should load successfully");
+
+        let inventory = result.into_inventory();
+        assert!(
+            inventory.get_class("base").is_some(),
+            "Class should be accessible after into_inventory()"
+        );
+    }
+
+    #[test]
+    fn test_duplicate_node_name_becomes_diagnostic() {
+        let node1 = Node::new("server".to_string())
+            .uri("yaml_fs:///nodes/alpha/server.yml")
+            .build();
+        let node2 = Node::new("server".to_string())
+            .uri("yaml_fs:///nodes/beta/server.yml")
+            .build();
+
+        let mut inventory = Inventory::new();
+        inventory.add_node(node1);
+        inventory.add_node(node2);
+
+        // Second node with same name should be skipped; a warning diagnostic
+        // should be recorded on the inventory.
+        let duplicate_diag = inventory
+            .diagnostics()
+            .iter()
+            .find(|d| d.code.as_deref() == Some("INV-003"));
+        assert!(
+            duplicate_diag.is_some(),
+            "Should have INV-003 diagnostic for duplicate node name"
+        );
+        assert_eq!(
+            duplicate_diag.unwrap().severity,
+            DiagnosticSeverity::Warning,
+            "Duplicate node name should be a warning"
+        );
+
+        // The first node should still be in the inventory
+        assert!(
+            inventory.get_node("server").is_some(),
+            "First node should still exist"
         );
     }
 }

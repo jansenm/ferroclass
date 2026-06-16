@@ -8,6 +8,112 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-06-16
+
+### Added
+
+- **`EntityState` enum** with four pipeline stages: `Source`, `Merged`,
+  `Interpolated`, `Failed`. Replaces the previous `Valid`/`Failed` binary.
+  The states track how far processing has progressed:
+  `Source → Merged → Interpolated`, with any stage able to transition to
+  `Failed` on error. Custom `Ord` implementation ensures
+  `Failed < Source < Merged < Interpolated`, so `Iterator::min()` correctly
+  computes the worst-case aggregate state.
+- **`EntityState::is_usable()`** — returns `true` for `Source`, `Merged`,
+  and `Interpolated`; `false` for `Failed`.
+- **`Node::state()`, `Node::is_usable()`, `Node::diagnostics()`,
+  `Node::add_diagnostic()`, `Node::has_errors()`** — inspect the processing
+  state and error diagnostics of a merged node.
+- **`Class::state()`, `Class::is_usable()`, `Class::diagnostics()`,
+  `Class::add_diagnostic()`, `Class::has_errors()`** — same for classes.
+- **`Inventory::state()`** — returns the aggregate minimum state across all
+  nodes and classes. An empty inventory defaults to `Interpolated`. If any
+  entity is `Failed`, the inventory is `Failed`. If the worst is `Merged`,
+  the inventory is `Merged`.
+- **`Inventory::diagnostics()`** — returns inventory-level diagnostics
+  (those with `subject: None`, e.g., config errors).
+- **`Inventory::all_diagnostics()`** — returns all diagnostics: inventory-level
+  plus per-entity summaries.
+- **`Inventory::has_errors()`** — checks both inventory-level and per-entity
+  diagnostics for error severity.
+- **Per-entity diagnostic summaries with 0-or-1 invariant.** `Inventory`
+  maintains a `HashMap<String, Diagnostic>` keyed by entity name. When a node
+  or class is added via `add_node()` or `add_class()`, any previous summary
+  diagnostic for that entity is removed and replaced. This ensures there is
+  never more than one inventory-level diagnostic per entity.
+- **Collect-and-continue error handling for `merge_node()` and
+  `merge_class()`.** Domain errors (missing class, interpolation failure,
+  type merge conflict, class name resolution failure) now return
+  `Ok(node)` with `state: Failed` and error diagnostics attached, instead
+  of `Err`. Implementation errors (I/O failures) still return `Err`.
+  Callers should check `node.is_usable()` after `merge_node()`.
+- **`NodeBuilder::state()` and `NodeBuilder::add_diagnostic()`** — set
+  entity state and add diagnostics during node construction.
+- **`ClassBuilder::state()` and `ClassBuilder::add_diagnostic()`** — same
+  for class construction.
+- **Diagnostic codes** for machine-readable identification of errors:
+  `INV-001` (class not found), `INV-002` (class name resolution failure),
+  `REF-001` (interpolation error), `MERGE-001` (type merge conflict).
+- **`load_with_diagnostics()` and `load_from_yaml_string_with_diagnostics()`.**
+  New functions that return `LoadResult` containing both the `Inventory` and
+  a `Vec<Diagnostic>` of any errors collected during loading. Per-file parse
+  errors are collected as diagnostics instead of aborting the entire load.
+  Only truly fatal errors (can't read directory, invalid repository path)
+  still return `Err`.
+- **`LoadResult` type** with `inventory()`, `diagnostics()`, `has_errors()`,
+  and `into_inventory()` methods. This is the structured return type for
+  collect-and-continue loading.
+- **Diagnostic codes for loading errors:** `PARSE-001` (single-file parse
+  error), `PARSE-002` (class load error), `PARSE-003` (node load error),
+  `INV-003` (duplicate node name).
+
+### Changed
+
+- **`merge_node()` and `merge_class()` return `Ok(Failed)` for domain
+  errors instead of `Err`.** This is a breaking API change. Callers that
+  previously checked `result.is_err()` for missing classes or interpolation
+  failures must now check `node.state() == EntityState::Failed` or
+  `!node.is_usable()`. Only `NodeNotFound` (node doesn't exist in inventory)
+  and `RepositoryError` (I/O failure) still return `Err`.
+- **All output adapters (Ansible, Salt, Reclass), Python bindings, and CLI
+  updated** to check `node.is_usable()` after `merge_node()` and handle
+  failed nodes appropriately (skip or error).
+- **`Inventory` no longer has a `state` field.** `Inventory::state()` is
+  now computed on demand as the aggregate minimum across all nodes and classes.
+- **`is_valid()` renamed to `is_usable()`** on both `Node` and `Class`.
+  The old name was misleading — `is_usable()` returns `true` for `Source`,
+  `Merged`, and `Interpolated` states, not just one "valid" state.
+- **`EntityState::Valid` replaced by `EntityState::Interpolated`.** The
+  default state for a successfully merged node is now `Interpolated`, not
+  `Valid`. This more precisely describes what happened: merge and
+  interpolation both succeeded.
+- **`Node::set_state()` and `Class::set_state()` removed from `Inventory`.**
+  `Inventory::state()` is now derived from entity states, not set directly.
+- **`Inventory::add_diagnostic()` now only adds inventory-level diagnostics.**
+  Per-entity diagnostics are auto-managed by `add_node()` and `add_class()`.
+- **13 integration tests updated** from `assert!(result.is_err())` to
+  `assert_eq!(node.state(), EntityState::Failed)` with diagnostic checks.
+- **`Error::DuplicateNodeName` removed.** `add_node()` no longer returns
+  `Err(DuplicateNodeName)`; instead, the duplicate is skipped and a warning
+  diagnostic (code `INV-003`) is recorded. This is a breaking API change.
+- **`add_node()` now returns `()` instead of `Result<(), Error>`.** Duplicate
+  node names are handled as warnings instead of errors.
+- **`load_yaml_fs()` and `load_yaml_file()` replaced by
+  `load_yaml_fs_with_diagnostics()` and `load_yaml_file_with_diagnostics()`.**
+  These internal functions now collect per-file errors as diagnostics instead
+  of aborting. The public `load()` API is preserved for backward compatibility.
+- **`load()` now internally calls `load_with_diagnostics()`** and extracts
+  the `Inventory`. This preserves backward compatibility — existing callers
+  that don't need diagnostics continue to work unchanged.
+
+### Removed
+
+- **`EntityState::Valid`** — replaced by `EntityState::Interpolated`.
+- **`Inventory::set_state()`** — inventory state is now derived from entity
+  states, not set directly.
+- **`Error::DuplicateNodeName`** — `add_node()` no longer returns this error.
+  Duplicate node names are handled as warnings (code `INV-003`).
+
 ## [0.13.0] - 2026-06-14
 
 ### Added

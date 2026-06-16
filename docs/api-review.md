@@ -140,17 +140,24 @@ fine and breaking `Options` doesn't unlock new functionality.
 - ✅ Remove `#[pyclass(unsendable)]` from `PyInventory`/`PyNode`
 - ✅ Verify `Inventory: Send + Sync` (static assertions pass)
 
-### Phase 2: Query API ✅ Done (v0.13.0, partial)
+### Phase 2: Error collection (collect-and-continue) ✅ In progress
 
-- ✅ `Inventory::class_names()` — returns `impl Iterator<Item = &str>` in insertion order
-- ✅ `Inventory::find_nodes_by_class(class_name)` — declared class membership, with lazy reverse index
-- ✅ `Inventory::find_nodes_by_resolved_class(class_name)` — resolved class hierarchy (merges each node)
-- ✅ `Inventory::find_nodes_by_environment(environment)` — filter by environment, with lazy reverse index
-- ✅ `Inventory::search_nodes(pattern)` — case-insensitive substring match on node names
-- ✅ `Inventory::build_indexes()` — build reverse indexes (class→nodes, environment→nodes)
-- ✅ `Inventory::class_to_nodes()` — reverse index accessor (class name → node names)
-- ✅ `Inventory::environment_to_nodes()` — reverse index accessor (environment → node names)
-- ⏭️ Deferred: incremental merge, progress callbacks, observability (Phase 2a)
+- ✅ `Diagnostic`, `DiagnosticSeverity`, `SourceLocation` types (Phase 0, v0.13.0)
+- ✅ `EntityState` enum: `Source`, `Merged`, `Interpolated`, `Failed` (Phase 2a)
+- ✅ `Node::state()`, `Node::is_usable()`, `Node::diagnostics()`, `Node::add_diagnostic()`
+- ✅ `Class::state()`, `Class::is_usable()`, `Class::diagnostics()`, `Class::add_diagnostic()`
+- ✅ `Inventory::state()` — aggregate minimum across all nodes and classes
+- ✅ `Inventory::diagnostics()` — inventory-level diagnostics
+- ✅ `Inventory::all_diagnostics()` — combined inventory + entity summaries
+- ✅ `Inventory::has_errors()` — checks both sources
+- ✅ Per-entity diagnostic summaries with 0-or-1 invariant (`HashMap<String, Diagnostic>`)
+- ✅ `merge_node()` returns `Ok(Failed)` for domain errors instead of `Err`
+- ✅ `merge_class()` returns `Ok(Failed)` for domain errors instead of `Err`
+- ✅ Diagnostic codes: `INV-001`, `INV-002`, `REF-001`, `MERGE-001`
+- ⬜ `load()` collects per-file parse errors and continues (Phase 2a.4/2a.5)
+- ⬜ Source location tracking in parser (Phase 0 prerequisite for LSP)
+- ⬜ Warning-level diagnostics (duplicates, overrides, unused classes)
+- ⬜ Incremental merge, progress callbacks, observability
 
 ### Phase 3: Merge Replay
 
@@ -256,7 +263,8 @@ above, but the order matters. From the analysis in `docs/interfaces.md`:
 ```
 Phase 0 (API cleanup + diagnostics) ✅ Done ──┐
 Phase 1 (thread safety) ✅ Done                 ├── LSP v1
-Phase 2 (query API + error collection) ────────┘
+Phase 2 (query API + error collection) ✅ Partial ──┘
+Phase 2a (collect-and-continue) ✅ In progress ──┘
 Phase 3 (merge replay) ────────────────────────── MCP v1
 Phase 4 (Explorer) ────────────────────────────── TUI + Web UI
 ```
@@ -382,21 +390,41 @@ atomic overhead is unmeasurable in practice.
 
 ### Diagnostic-returning APIs
 
-New methods should return structured results, not just `Result<T, Error>`:
+The library now uses a collect-and-continue model for domain errors:
 
 ```rust,ignore
-// Current: all-or-nothing, aborts on first error
-pub fn merge_node(&self, name: &str) -> Result<Node, Error>
+// Domain errors return Ok(Failed) — the node exists with diagnostics
+let node = inventory.merge_node("web01")?;
+if !node.is_usable() {
+    for diag in node.diagnostics() {
+        eprintln!("{}: {}", diag.severity, diag.message);
+    }
+    return Err(...);
+}
 
-// Preferred: partial results with diagnostics
-pub fn merge_node(&self, name: &str) -> Result<MergeResult, FatalError>
-// MergeResult { node: Node, diagnostics: Vec<Diagnostic> }
+// Implementation errors (I/O, bugs) still return Err
+let inventory = ferroclass::load(&options)?;  // RepositoryError
 ```
 
-This lets the LSP show all problems at once (missing classes, circular
-references, type conflicts) while still producing a partial merged node.
-The CLI can keep the old behavior by checking for error-severity
-diagnostics and exiting.
+The `EntityState` enum tracks how far processing progressed:
+
+```rust,ignore
+pub enum EntityState {
+    Source,        // Parsed from YAML, no merging applied
+    Merged,        // Class inheritance resolved, not yet interpolated
+    Interpolated,  // Fully processed (default for merge_node())
+    Failed,        // Processing failed; data is NOT trustworthy
+}
+```
+
+`Inventory::state()` returns the aggregate minimum across all nodes and
+classes. An empty inventory defaults to `Interpolated`. If any entity is
+`Failed`, the inventory is `Failed`.
+
+Per-entity diagnostic summaries are stored in a `HashMap<String, Diagnostic>`
+keyed by entity name, ensuring a 0-or-1 invariant: there is never more
+than one inventory-level diagnostic per entity. When a node or class is
+re-added (fixed), the old diagnostic is automatically removed.
 
 ### Iterator-based query APIs
 
@@ -421,7 +449,7 @@ first N results. If the caller needs a `Vec`, they can `.collect()`.
 | `NodeBuilder`/`ClassBuilder` clone  | ~~`&mut self` on build~~ `self` on build     | ✅ Done | Avoids forced clones      |
 | Setters require owned `String`     | ~~`set_uri(String)`~~ `set_uri(impl Into<String>)` | ✅ Done | Caller ergonomics |
 | `StorageOptionsTrait` clones       | `fn parameter_key_style() -> ParameterKeyStyle` | `fn parameter_key_style() -> &ParameterKeyStyle` | Nit, deferred |
-| `merge_node()` aborts on error     | `Result<Node, Error>`                | `Result<MergeResult, FatalError>`      | Phase 2                  |
+| `merge_node()` aborts on error     | ~~`Result<Node, Error>`~~ `Result<Node, Error>` (domain errors → `Ok(Failed)`) | ✅ Done (Phase 2a) | LSP shows all problems at once |
 | `Value` uses `Rc`                   | ~~`!Send + !Sync`~~ `Arc` → `Send + Sync`    | ✅ Done | Thread safety             |
 
 ### Caching and indexing — optional, not in the library core

@@ -23,6 +23,48 @@ pub(crate) enum Error {
     },
     #[snafu(display("error serializing output: {message}"))]
     Output { message: String },
+    #[snafu(display("inventory has {count} error(s)"))]
+    LoadErrors { count: usize },
+}
+
+/// Print diagnostics to stderr.
+///
+/// Returns `Err(LoadErrors)` if any `Error`-severity diagnostics are present,
+/// causing the CLI to exit with no data output. Warnings are printed but do
+/// not block output.
+fn check_diagnostics(result: &inv::LoadResult) -> Result<(), Error> {
+    let diagnostics = result.diagnostics();
+    if diagnostics.is_empty() {
+        return Ok(());
+    }
+
+    let error_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == inv::DiagnosticSeverity::Error)
+        .count();
+
+    for diag in diagnostics {
+        match diag.severity {
+            inv::DiagnosticSeverity::Error => {
+                eprintln!("{}", diag);
+            }
+            inv::DiagnosticSeverity::Warning => {
+                eprintln!("{}", diag);
+            }
+            inv::DiagnosticSeverity::Info => {
+                tracing::info!("{}", diag);
+            }
+            inv::DiagnosticSeverity::Hint => {
+                tracing::debug!("{}", diag);
+            }
+        }
+    }
+
+    if error_count > 0 {
+        return Err(Error::LoadErrors { count: error_count });
+    }
+
+    Ok(())
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -31,7 +73,9 @@ pub(crate) fn inventory_main(config: Options) -> Result<(), Error> {
     let merge_config = config.build_merge_config();
     let ignore_failed_node = merge_config.inventory_ignore_failed_node;
     let ignore_failed_render = merge_config.inventory_ignore_failed_render;
-    let mut inventory_obj = inv::load(&config.storage_options).map_err(Error::from)?;
+    let load_result = inv::load_with_diagnostics(&config.storage_options).map_err(Error::from)?;
+    check_diagnostics(&load_result)?;
+    let mut inventory_obj = load_result.into_inventory();
     inventory_obj.set_class_mappings(config.class_mappings);
     inventory_obj.set_class_mappings_match_path(config.class_mappings_match_path);
     inventory_obj.set_merge_config(merge_config);
@@ -64,7 +108,9 @@ pub(crate) fn inventory_main(config: Options) -> Result<(), Error> {
 pub(crate) fn nodeinfo_main(config: Options, node_name: &str) -> Result<(), Error> {
     tracing::debug!("starting nodeinfo for {node_name}");
     let merge_config = config.build_merge_config();
-    let mut inventory_obj = inv::load(&config.storage_options).map_err(Error::from)?;
+    let load_result = inv::load_with_diagnostics(&config.storage_options).map_err(Error::from)?;
+    check_diagnostics(&load_result)?;
+    let mut inventory_obj = load_result.into_inventory();
     inventory_obj.set_class_mappings(config.class_mappings);
     inventory_obj.set_class_mappings_match_path(config.class_mappings_match_path);
     inventory_obj.set_merge_config(merge_config);
@@ -83,7 +129,11 @@ pub(crate) fn nodeinfo_main(config: Options, node_name: &str) -> Result<(), Erro
         })?;
 
     if !merged.is_usable() {
-        let msg = merged
+        // Print all diagnostics for the failed node
+        for diag in merged.diagnostics() {
+            eprintln!("{}", diag);
+        }
+        let first_msg = merged
             .diagnostics()
             .first()
             .map(|d| d.message.as_str())
@@ -92,7 +142,7 @@ pub(crate) fn nodeinfo_main(config: Options, node_name: &str) -> Result<(), Erro
             source: Box::new(inv::Error::NodeNotFound {
                 node_name: node_name.to_string(),
             }),
-            node_name: format!("{}: {}", node_name, msg),
+            node_name: format!("{}: {}", node_name, first_msg),
         });
     }
 

@@ -39,8 +39,8 @@ All three interfaces share these needs:
 | Thread-safe inventory handle          | ~~`Rc<Value>` is `!Send + !Sync`~~ ✅ Done: `Arc<Value>` is `Send + Sync` | Phase 1 complete |
 | Progress reporting during load        | No callback or event system              | Tracing spans or callback hook |
 | Unified error handling                | Fragmented error types                   | Single `ferroclass::Error`     |
-| Error collection (not abort on first) | Every layer aborts on first error         | Collect-and-continue patterns  |
-| Warnings and informational messages   | Only `tracing::warn!` logs; no structured | Diagnostic severity levels     |
+| Error collection (not abort on first) | ✅ Domain errors → `Ok(Failed)`; ⬜ file loading still aborts | Collect-and-continue for merge ✅; for load ⬜ |
+| Warnings and informational messages   | Only `tracing::warn!` logs; no structured | Diagnostic severity levels ✅ |
 
 ## Diagnostics and Error Collection
 
@@ -50,40 +50,68 @@ loading, class resolution, merging, and interpolation. This is the right
 behavior for a CLI tool that produces one output, but wrong for an
 interactive system that should show *all* problems at once.
 
-### Current Behavior: Abort on First Error
+### Current Behavior: Collect-and-Continue (partially implemented)
 
-The entire pipeline uses `?` propagation — one error anywhere aborts
-everything:
+The merge pipeline now uses a collect-and-continue model for domain errors.
+`merge_node()` and `merge_class()` return `Ok(Node)` or `Ok(Class)` even
+when a domain error occurs (missing class, interpolation failure, type
+conflict). The returned entity has `state: EntityState::Failed` and
+diagnostics explaining what went wrong. Only implementation errors (I/O
+failures, bugs) still return `Err`.
 
+The `EntityState` enum tracks processing progress:
+- **Source** — parsed from YAML, no merging applied
+- **Merged** — class inheritance resolved, not yet interpolated
+- **Interpolated** — fully processed (default for `merge_node()`)
+- **Failed** — processing failed; data is NOT trustworthy
+
+`Inventory::state()` returns the aggregate minimum across all nodes and
+classes. Per-entity diagnostic summaries are stored in a
+`HashMap<String, Diagnostic>` keyed by entity name, ensuring a 0-or-1
+invariant.
+
+**Still aborts on first error** (not yet collect-and-continue):
 - **File loading**: First invalid YAML file → abort. Other files are
-  never loaded.
-- **Class resolution**: Missing class → abort. No other classes are
-  resolved.
-- **Merge**: Type conflict → abort. No other keys are merged.
-- **Interpolation**: First `ReferenceNotFound` → abort (unless
-  `group_errors` is enabled, which only collects `ReferenceNotFound`
-  errors, not `CircularReference` or `TypeMerge`).
-- **Binary exit**: `process::exit(1)` on first error.
+  never loaded. (Planned for Phase 2a.4/2a.5)
+- **Node loading**: Duplicate node name → abort. (Will become a Failed
+  node diagnostic.)
 
-The one exception: `interpolation::interpolate()` with `group_errors`
-collects multiple `ReferenceNotFound` errors. But `CircularReference`,
-`ChangedConstantParameter`, and `TypeMerge` still abort immediately.
+**Now collect-and-continue:**
+- ✅ **Missing class reference** → node with `state: Failed` and `INV-001` diagnostic
+- ✅ **Interpolation error** → node with `state: Failed` and `REF-001` diagnostic
+- ✅ **Type conflict during merge** → node with `state: Failed` and `MERGE-001` diagnostic
+- ✅ **Class name resolution failure** → node with `state: Failed` and `INV-002` diagnostic
+- ✅ **File-level parse errors** → skipped with `PARSE-002`/`PARSE-003` diagnostic
+- ✅ **Duplicate node names** → skipped with `INV-003` warning diagnostic
 
-### Target Behavior: Collect and Continue
+### Target Behavior: Collect and Continue (partially implemented)
 
 For interactive interfaces, we need to collect as many diagnostics as
 possible and report them all at once. A user editing a YAML file should
 see all problems in one pass, not fix one error, re-run, fix the next,
 re-run, etc.
 
-The diagnostic model should have severity levels:
+**Implemented (Phase 2a):**
+- ✅ Domain errors in merge produce `EntityState::Failed` nodes with
+  diagnostics instead of `Err`. Callers check `node.is_usable()`.
+- ✅ `EntityState` enum with `Source`, `Merged`, `Interpolated`, `Failed`.
+- ✅ `Inventory::state()` returns aggregate minimum across all entities.
+- ✅ Per-entity diagnostic summaries with 0-or-1 invariant.
+- ✅ `Node::state()`, `Node::diagnostics()`, `Node::has_errors()`, etc.
+- ✅ `Class::state()`, `Class::diagnostics()`, `Class::has_errors()`, etc.
+- ✅ Diagnostic codes: `INV-001`, `INV-002`, `REF-001`, `MERGE-001`.
 
-| Severity     | Meaning                                          | Example                                    |
-|--------------|--------------------------------------------------|--------------------------------------------|
-| **Error**    | Prevents a node from merging correctly          | Missing class, circular reference, type conflict |
-| **Warning**  | Suspicious but valid                             | Override of constant parameter, duplicate class reference, overridden value |
-| **Info**     | Informational, no action needed                  | Class mapping matched a pattern             |
-| **Hint**     | Suggestion for improvement                       | Unused class, parameter that could be simplified |
+**Not yet implemented:**
+- ⬜ Source location tracking: `Class` and `Node` should carry file/line
+  info from the parser for LSP go-to-definition.
+- ⬜ Warning-level diagnostics: duplicate class references, overridden
+  constants, unused classes, etc.
+- ⬜ Info/hint diagnostics: class mapping matches, deep inheritance chains,
+  unused classes.
+- ⬜ `load()` returns `Result<Inventory, Error>` for backward compatibility;
+  `load_with_diagnostics()` returns `Result<LoadResult, Error>` with full
+  diagnostics. Consider making `load()` collect-and-continue by default
+  in a future version.
 
 ### Error Conditions (should be collected, not abort)
 
@@ -127,7 +155,7 @@ These don't exist today but would be valuable:
 
 ### Library Changes Needed
 
-#### 1. Diagnostic Type
+#### 1. Diagnostic Type ✅ Done
 
 ```rust,ignore
 pub enum DiagnosticSeverity {
@@ -140,18 +168,24 @@ pub enum DiagnosticSeverity {
 pub struct Diagnostic {
     pub severity: DiagnosticSeverity,
     pub message: String,
-    pub source: SourceLocation,   // file, line, column
-    pub code: Option<String>,     // e.g., "E001", "W001"
-    pub related: Vec<SourceLocation>,  // secondary locations
+    pub source: Option<SourceLocation>,  // file, line, column
+    pub code: Option<String>,             // e.g., "INV-001", "REF-001"
+    pub subject: Option<String>,          // entity name this diagnostic is about
 }
 
-pub struct DiagnosticReport {
-    pub diagnostics: Vec<Diagnostic>,
-    pub inventory: Option<Inventory>,  // Some if load succeeded (possibly partial)
+pub enum EntityState {
+    Source,        // Parsed from YAML, no merging applied
+    Merged,        // Class inheritance resolved, not yet interpolated
+    Interpolated,  // Fully processed (default)
+    Failed,        // Processing failed; data is NOT trustworthy
 }
 ```
 
-#### 2. Error Collection in `load()`
+`Diagnostic` is attached to `Node`, `Class`, and `Inventory`. Per-entity
+summaries are stored in `Inventory.entity_diagnostics` (a `HashMap<String,
+Diagnostic>` keyed by entity name, ensuring 0-or-1 invariant).
+
+#### 2. Error Collection in `load()` ⬜ Not yet
 
 Currently `load()` returns `Result<Inventory, Error>`. It should return
 `Result<DiagnosticReport, Error>` where `DiagnosticReport` contains both
@@ -168,27 +202,21 @@ pub fn load(options: &StorageOptions) -> Result<DiagnosticReport, Error>;
 // DiagnosticReport { diagnostics: Vec<Diagnostic>, inventory: Option<Inventory> }
 ```
 
-The caller decides what to do with errors vs warnings. The CLI can exit
-on any `Error`-severity diagnostic. The LSP and Explorer show all
-diagnostics but still display the partial inventory.
+#### 3. Error Collection in Merge ✅ Done
 
-#### 3. Error Collection in Merge
-
-`merge_node()` currently returns `Result<Node, merge::Error>`. It should
-collect errors and warnings:
+`merge_node()` now returns `Result<Node, Error>` where domain errors produce
+`Ok(Node)` with `node.state() == EntityState::Failed` and diagnostics.
+Only implementation errors (I/O, bugs) still return `Err`.
 
 ```rust,ignore
-// Before:
-pub fn merge_node(&self, name: &str) -> Result<Node, Error>;
-
-// After:
-pub fn merge_node(&self, name: &str) -> Result<MergeResult, Error>;
-// MergeResult { node: Node, diagnostics: Vec<Diagnostic> }
+let node = inventory.merge_node("web01")?;
+if !node.is_usable() {
+    for diag in node.diagnostics() {
+        eprintln!("{}: {} [{}]", diag.severity, diag.message, diag.code.unwrap_or(""));
+    }
+    // Handle failed node
+}
 ```
-
-A node that has missing classes can still produce a partial merge — the
-missing class's parameters are simply absent. The caller gets the node
-*and* the list of problems.
 
 #### 4. Source Locations
 
@@ -217,15 +245,19 @@ class contributed each key. This overlaps with the merge replay feature
 
 ### Phasing
 
-| Phase | Change                                                    | Effort |
-|-------|-----------------------------------------------------------|--------|
-| 0     | Add `Diagnostic` and `DiagnosticSeverity` types           | Low    |
-| 0     | Add `SourceLocation` to `Class` and `Node` during parse   | Medium |
-| 1     | Change `load()` to collect per-file errors and continue   | Medium |
-| 1     | Change `merge_node()` to return `MergeResult` with diag   | Medium |
-| 2     | Extend `group_errors` to cover all interpolation errors   | Medium |
-| 2     | Add warning-level diagnostics (duplicates, overrides)    | Medium |
-| 3     | Add info/hint diagnostics (unused classes, deep chains)   | Low    |
+| Phase | Change                                                    | Effort | Status |
+|-------|-----------------------------------------------------------|--------|--------|
+| 0     | Add `Diagnostic` and `DiagnosticSeverity` types           | Low    | ✅ Done |
+| 0     | Add `EntityState` enum (Source/Merged/Interpolated/Failed) | Low    | ✅ Done |
+| 0     | Add `SourceLocation` to `Class` and `Node` during parse   | Medium | ⬜ Not yet |
+| 1     | Change `merge_node()` to return `Ok(Failed)` for domain errors | Medium | ✅ Done |
+| 2a    | Add per-entity diagnostic summaries with 0-or-1 invariant | Medium | ✅ Done |
+| 2a    | Change `load()` to collect per-file errors and continue   | Medium | ✅ Done |
+| 2a    | Add `LoadResult` type with diagnostics                   | Medium | ✅ Done |
+| 2a    | Change `add_node()` to accept duplicates as warnings       | Low    | ✅ Done |
+| 2     | Extend `group_errors` to cover all interpolation errors   | Medium | ⬜ Not yet |
+| 2     | Add warning-level diagnostics (duplicates, overrides)    | Medium | ⬜ Not yet |
+| 3     | Add info/hint diagnostics (unused classes, deep chains)   | Low    | ⬜ Not yet |
 
 Phase 0 and 1 changes are prerequisites for the LSP. Phase 2 and 3 can
 come later.
@@ -550,15 +582,15 @@ add another 4-6 weeks.
 
 ### Dependencies on Library Phases
 
-| LSP Feature          | Depends on (from api-review.md)                         |
-| -------------------- | ------------------------------------------------------- |
-| Diagnostics          | Phase 0: diagnostic types ✅ — collection API still needed |
-| Go-to-definition     | Phase 0: source location tracking in parser (not yet)   |
-| Find references      | Phase 2: query API                                      |
-| Hover / merge replay | Phase 3: merge replay API                               |
-| Autocomplete         | Phase 0: public `class_names()`/`node_names()` ✅        |
-| Thread safety        | Phase 1: `Arc<Value>` ✅                                |
-| File watching        | Phase 2: incremental load/reload                        |
+| LSP Feature          | Depends on (from api-review.md)                         | Status |
+| -------------------- | ------------------------------------------------------- | ------ |
+| Diagnostics          | Phase 0: diagnostic types ✅ + collection API ✅ (merge only, load not yet) | ✅ Partial |
+| Go-to-definition     | Phase 0: source location tracking in parser (not yet)   | ⬜ Not yet |
+| Find references      | Phase 2: query API ✅                                   | ✅ Done |
+| Hover / merge replay | Phase 3: merge replay API                               | ⬜ Not yet |
+| Autocomplete         | Phase 0: public `class_names()`/`node_names()` ✅       | ✅ Done |
+| Thread safety        | Phase 1: `Arc<Value>` ✅                                | ✅ Done |
+| File watching        | Phase 2: incremental load/reload                        | ⬜ Not yet |
 
 ---
 
@@ -649,15 +681,21 @@ Pre-configured prompt templates:
 
 ### Must Have (for all three interfaces)
 
-| Change                                        | Phase  | Effort | Impact                                      |
-|-----------------------------------------------|--------|--------|---------------------------------------------|
-| Decouple adapters from loading                | ~~Phase 0~~ ✅ Done | ~~Medium~~ Done | Enables all interfaces                       |
-| Unify error types                              | ~~Phase 0~~ ✅ Done | ~~Low~~ Done    | Cleaner public API                           |
-| Diagnostic collection (`DiagnosticReport`)   | 0 (types added, collection not yet) | High   | Collect errors instead of aborting — required for LSP, useful for all |
-| Source locations in parser (`SourceLocation`)  | 0 (types added, tracking not yet) | Medium | Required for LSP go-to-def, better error messages everywhere |
-| Make `add_node`/`add_class` public            | ~~Phase 0~~ ✅ Done | ~~Trivial~~ Done| Enables programmatic construction            |
-| Switch `Rc` → `Arc` in `Value`                | ~~Phase 1~~ ✅ Done | ~~Medium~~ Done | Enables thread safety                        |
-| Query API (filter, search)                    | 2      | Medium | Enables all interfaces                       |
+| Change                                        | Phase  | Effort | Impact                                      | Status |
+|-----------------------------------------------|--------|--------|---------------------------------------------|--------|
+| Decouple adapters from loading                | Phase 0 | Medium | Enables all interfaces                       | ✅ Done |
+| Unify error types                              | Phase 0 | Low    | Cleaner public API                           | ✅ Done |
+| Diagnostic collection (`DiagnosticReport`)   | 0 (types added, collection not yet) | High   | Collect errors instead of aborting — required for LSP, useful for all | ✅ Types + Collection |
+| Source location mapping                       | 0 (types added, tracking not yet) | Medium | Required for LSP go-to-def, better error messages everywhere | ⬜ Not yet |
+| Make `add_node`/`add_class` public            | Phase 0 | Trivial| Enables programmatic construction            | ✅ Done |
+| Switch `Rc` → `Arc` in `Value`                | Phase 1 | Medium | Enables thread safety                        | ✅ Done |
+| Query API (filter, search)                    | Phase 2 | Medium | Enables all interfaces                       | ✅ Done |
+| `EntityState` and entity diagnostics          | Phase 2a| Medium | Track processing progress, collect domain errors | ✅ Done |
+| `merge_node()` returns `Ok(Failed)` for domain errors | Phase 2a | Medium | Collect-and-continue for merge errors | ✅ Done |
+| `load_with_diagnostics()` collects per-file errors | Phase 2a | Medium | Collect-and-continue for loading errors | ✅ Done |
+| `LoadResult` type                             | Phase 2a | Medium | Structured return with inventory + diagnostics | ✅ Done |
+| `add_node()` accepts duplicates as warnings   | Phase 2a | Low    | Don't abort on duplicate node names | ✅ Done |
+| `load()` returns `Result<Inventory, Error>` for backward compat | Phase 2a | Low | Existing callers don't need changes | ✅ Done |
 
 ### Should Have (the core differentiator)
 
@@ -688,11 +726,12 @@ The three interfaces depend on the same library improvements, but the
 implementation order matters for impact and effort:
 
 ```
-Phase 0 (API cleanup + diagnostics) ✅ Done (v0.13.0)
-Phase 1 (thread safety: Rc → Arc)  ✅ Done (v0.13.0)
-Phase 2 (query API + error collection) ──→ LSP v1 (diagnostics, go-to-def, hover, autocomplete)
-Phase 3 (merge replay) ─────────────────→ MCP v1 (tools, resources, prompts)
-Phase 4 (Explorer features) ────────────→ TUI + Web UI
+Phase 0 (API cleanup + diagnostics) ✅ Done ──┐
+Phase 1 (thread safety) ✅ Done                 ├── LSP v1
+Phase 2a (collect-and-continue) ✅ Done ────────┘
+Phase 2b (source location tracking) ────────────── LSP v1 (go-to-def)
+Phase 3 (merge replay) ────────────────────────── MCP v1
+Phase 4 (Explorer) ────────────────────────────── TUI + Web UI
 ```
 
 ### Why LSP first

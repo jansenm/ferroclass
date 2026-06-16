@@ -49,7 +49,10 @@ pub use inventory::Inventory;
 pub use inventory::diagnostic::{Diagnostic, DiagnosticSeverity, EntityState, SourceLocation};
 pub use inventory::load;
 pub use inventory::load_from_yaml_string;
+pub use inventory::load_from_yaml_string_with_diagnostics;
 pub use inventory::load_from_yaml_string_with_uri;
+pub use inventory::load_with_diagnostics;
+pub use inventory::LoadResult;
 pub use inventory::options::Options;
 pub use inventory::options::{
     MergeConfig, OutputFormat, OutputOptions, ParameterKeyStyle, StorageOptions,

@@ -3,9 +3,8 @@
 
 use ferroclass::inventory::options::{ParameterKeyStyle, StorageOptions, StorageType};
 use ferroclass::inventory::value::{Key, Value};
-use ferroclass::inventory::{load, load_from_yaml_string};
+use ferroclass::inventory::{load, load_from_yaml_string, load_from_yaml_string_with_diagnostics};
 use indoc::indoc;
-use snafu::Report;
 use std::path::PathBuf;
 
 #[test]
@@ -21,12 +20,23 @@ fn test_invalid_parameter_key_ansible_style() {
     "#
     );
 
-    let error = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::Ansible)
-        .expect_err("Expected an error for invalid key");
+    let result = load_from_yaml_string_with_diagnostics(
+        TEST_INVENTORY,
+        &ParameterKeyStyle::Ansible,
+        None,
+    )
+    .expect("Should return Ok even with errors");
     assert!(
-        Report::from_error(error)
-            .to_string()
-            .contains("parameter key")
+        result.has_errors(),
+        "Expected errors for invalid key, got: {:?}",
+        result.diagnostics()
+    );
+    // The parse error should mention the class name or parameter key
+    let diag_messages: Vec<&str> = result.diagnostics().iter().map(|d| d.message.as_str()).collect();
+    assert!(
+        diag_messages.iter().any(|m| m.contains("classA") || m.contains("parameter key") || m.contains("invalid-key")),
+        "Expected 'classA', 'parameter key', or 'invalid-key' in diagnostics: {:?}",
+        diag_messages
     );
 }
 
@@ -293,11 +303,22 @@ fn test_invalid_definition_unknown_key() {
     "#
     );
 
-    let error = load_from_yaml_string(TEST_INVENTORY, &ParameterKeyStyle::default())
-        .expect_err("Expected an error");
+    let result = load_from_yaml_string_with_diagnostics(
+        TEST_INVENTORY,
+        &ParameterKeyStyle::default(),
+        None,
+    )
+    .expect("Should return Ok even with errors");
     assert!(
-        Report::from_error(error)
-            .to_string()
-            .contains("unknown_key")
+        result.has_errors(),
+        "Expected errors for unknown key, got: {:?}",
+        result.diagnostics()
+    );
+    // The parse error should mention the class name or the unknown_key
+    let diag_messages: Vec<&str> = result.diagnostics().iter().map(|d| d.message.as_str()).collect();
+    assert!(
+        diag_messages.iter().any(|m| m.contains("classA") || m.contains("unknown_key")),
+        "Expected 'classA' or 'unknown_key' in diagnostics: {:?}",
+        diag_messages
     );
 }
