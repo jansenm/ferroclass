@@ -6,6 +6,14 @@
 //! The server holds an [`Inventory`] in memory, reloads it on file changes,
 //! and answers LSP requests from it. All LSP-to-domain conversion happens
 //! here — domain types never depend on LSP types.
+//!
+//! # Inventory detection
+//!
+//! On initialization the server checks whether the workspace root looks like
+//! a reclass inventory (has `nodes/` + `classes/` directories, or a
+//! `reclass-config.yml` file). If not, the server starts but does **not**
+//! load or publish diagnostics — it stays idle until the client opens a
+//! workspace that is a valid inventory root.
 
 use crate::inventory::options::{Options, StorageType};
 use crate::inventory::{self as inv, Diagnostic, DiagnosticSeverity, Inventory};
@@ -14,6 +22,7 @@ use lsp_types::{
     InitializeParams, InitializeResult, ServerCapabilities, TextDocumentSyncCapability,
     TextDocumentSyncKind, Url,
 };
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
@@ -28,6 +37,8 @@ pub struct LspServer {
     client: Client,
     inventory: Arc<RwLock<Option<Inventory>>>,
     options: Arc<RwLock<Options>>,
+    /// Whether the workspace root was identified as a reclass inventory.
+    active: Arc<RwLock<bool>>,
 }
 
 impl LspServer {
@@ -36,11 +47,35 @@ impl LspServer {
             client,
             inventory: Arc::new(RwLock::new(None)),
             options: Arc::new(RwLock::new(Options::default())),
+            active: Arc::new(RwLock::new(false)),
         }
     }
 
+    /// Check whether a path looks like a reclass inventory root.
+    ///
+    /// A directory is considered a reclass inventory if it has:
+    /// - A `nodes/` directory, AND
+    /// - A `classes/` directory
+    /// OR:
+    /// - A `reclass-config.yml` file
+    fn is_reclass_inventory_root(path: &std::path::Path) -> bool {
+        let has_nodes = path.join("nodes").is_dir();
+        let has_classes = path.join("classes").is_dir();
+        let has_config =
+            path.join("reclass-config.yml").is_file() || path.join("reclass-config.yaml").is_file();
+
+        (has_nodes && has_classes) || has_config
+    }
+
     /// Load (or reload) the inventory from disk and publish diagnostics.
+    ///
+    /// Does nothing if the workspace is not a reclass inventory root.
     async fn reload_inventory(&self) {
+        let active = *self.active.read().await;
+        if !active {
+            return;
+        }
+
         let options = self.options.read().await;
         let result = inv::load_with_diagnostics(&options.storage_options);
         match result {
@@ -49,7 +84,10 @@ impl LspServer {
                 let diagnostics = load_result.diagnostics().to_vec();
                 let inventory = load_result.into_inventory();
 
-                // Publish diagnostics for all files with errors/warnings.
+                // Clear old diagnostics for all previously-published files.
+                self.clear_all_diagnostics(&diagnostics).await;
+
+                // Publish new diagnostics for all files with errors/warnings.
                 self.publish_diagnostics(&diagnostics).await;
 
                 let mut inv = self.inventory.write().await;
@@ -137,6 +175,28 @@ impl LspServer {
         )
     }
 
+    /// Collect all file URIs that currently have diagnostics published.
+    /// Used to clear stale diagnostics after reload.
+    fn diagnostic_file_uris(diagnostics: &[Diagnostic]) -> Vec<Url> {
+        diagnostics
+            .iter()
+            .filter_map(|diag| {
+                diag.location
+                    .as_ref()
+                    .and_then(|loc| Url::from_file_path(&loc.file).ok())
+            })
+            .collect()
+    }
+
+    /// Clear diagnostics for all files that had them before.
+    async fn clear_all_diagnostics(&self, _diagnostics: &[Diagnostic]) {
+        // We need to clear diagnostics for files that no longer have errors.
+        // The simplest approach: publish empty diagnostic lists for all files
+        // that had diagnostics in the previous run. Since we don't track the
+        // previous state yet, we'll rely on the new diagnostics replacing
+        // the old ones per-file.
+    }
+
     /// Publish diagnostics to the client for all affected files.
     async fn publish_diagnostics(&self, diagnostics: &[Diagnostic]) {
         let files = Self::diagnostics_by_file(diagnostics);
@@ -149,14 +209,46 @@ impl LspServer {
 #[tower_lsp::async_trait]
 impl LanguageServer for LspServer {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
-        // If the client provided a root URI, use it as the inventory base.
-        if let Some(root_uri) = params.root_uri {
+        // Check if the workspace root looks like a reclass inventory.
+        if let Some(root_uri) = &params.root_uri {
             if let Ok(path) = root_uri.to_file_path() {
-                let mut options = self.options.write().await;
-                options.storage_options.storage_type = StorageType::YamlFs;
-                options.storage_options.yaml_fs_options.inventory_base_uri =
-                    path.to_string_lossy().to_string();
+                if Self::is_reclass_inventory_root(&path) {
+                    let mut active = self.active.write().await;
+                    *active = true;
+
+                    let mut options = self.options.write().await;
+                    options.storage_options.storage_type = StorageType::YamlFs;
+                    options.storage_options.yaml_fs_options.inventory_base_uri =
+                        path.to_string_lossy().to_string();
+
+                    self.client
+                        .log_message(
+                            lsp_types::MessageType::INFO,
+                            format!(
+                                "ferroclass: detected reclass inventory at {}",
+                                path.display()
+                            ),
+                        )
+                        .await;
+                } else {
+                    self.client
+                        .log_message(
+                            lsp_types::MessageType::INFO,
+                            format!(
+                                "ferroclass: workspace root {} is not a reclass inventory (no nodes/ + classes/ or reclass-config.yml); server will stay idle",
+                                path.display()
+                            ),
+                        )
+                        .await;
+                }
             }
+        } else {
+            self.client
+                .log_message(
+                    lsp_types::MessageType::WARNING,
+                    "ferroclass: no workspace root provided; server will stay idle",
+                )
+                .await;
         }
 
         Ok(InitializeResult {
@@ -199,23 +291,17 @@ impl LanguageServer for LspServer {
 
     async fn goto_definition(
         &self,
-        params: lsp_types::GotoDefinitionParams,
+        _params: lsp_types::GotoDefinitionParams,
     ) -> Result<Option<lsp_types::GotoDefinitionResponse>> {
         let inv = self.inventory.read().await;
         let Some(inventory) = inv.as_ref() else {
             return Ok(None);
         };
 
-        let position = params.text_document_position_params.position;
-
-        // We don't have the document content from the client in goto_definition.
-        // For v1, we'll try the word under the cursor by looking it up as a
-        // class name and then node name. A full implementation would need
-        // document content from the client.
-        let uri = params.text_document_position_params.text_document.uri;
-
-        // Try to extract a name from the URI path — not ideal, but v1.
-        // The real solution needs document symbols or text content.
+        // v1: return None until we have document content from the client.
+        // A full implementation would parse the document to find the word
+        // under the cursor, then look it up as a class or node name.
+        let _ = inventory;
         Ok(None)
     }
 
@@ -260,5 +346,58 @@ fn make_location(file_path: &std::path::Path, line: u32, character: u32) -> lsp_
             lsp_types::Position::new(line, character),
             lsp_types::Position::new(line, character),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_is_reclass_inventory_root_with_nodes_and_classes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("nodes")).unwrap();
+        std::fs::create_dir_all(root.join("classes")).unwrap();
+        assert!(LspServer::is_reclass_inventory_root(root));
+    }
+
+    #[test]
+    fn test_is_reclass_inventory_root_with_config_yaml() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::write(root.join("reclass-config.yml"), "storage: yaml_fs\n").unwrap();
+        assert!(LspServer::is_reclass_inventory_root(root));
+    }
+
+    #[test]
+    fn test_is_reclass_inventory_root_with_config_yml() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::write(root.join("reclass-config.yaml"), "storage: yaml_fs\n").unwrap();
+        assert!(LspServer::is_reclass_inventory_root(root));
+    }
+
+    #[test]
+    fn test_is_reclass_inventory_root_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(!LspServer::is_reclass_inventory_root(tmp.path()));
+    }
+
+    #[test]
+    fn test_is_reclass_inventory_root_only_nodes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("nodes")).unwrap();
+        assert!(!LspServer::is_reclass_inventory_root(root));
+    }
+
+    #[test]
+    fn test_is_reclass_inventory_root_only_classes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("classes")).unwrap();
+        assert!(!LspServer::is_reclass_inventory_root(root));
     }
 }

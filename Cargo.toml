@@ -36,6 +36,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dev-dependencies]
 insta = { version = "1.42", features = ["yaml"] }
+tempfile = "3"
 
 [features]
 manpages = ["clap_mangen"]

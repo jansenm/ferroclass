@@ -347,6 +347,7 @@ dependencies = [
  "serde_yml",
  "shellexpand",
  "snafu",
+ "tempfile",
  "tokio",
  "tower-lsp",
  "tracing",
