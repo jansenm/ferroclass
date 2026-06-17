@@ -42,6 +42,9 @@ pub mod storage;
 #[cfg(feature = "python")]
 pub mod python;
 
+#[cfg(feature = "lsp")]
+pub mod lsp;
+
 // Re-export the most commonly used types at the crate root for convenience.
 // These are the primary entry points for library consumers.
 pub use error::Error;

@@ -93,6 +93,22 @@ impl Class {
         self.uri.as_deref()
     }
 
+    /// Convert the entity's URI to a filesystem path.
+    ///
+    /// Strips the `yaml_fs://` or `yaml_file://` URI scheme prefix and
+    /// any fragment suffix (e.g. `#class:name`). Returns `None` if the
+    /// entity has no URI or the URI scheme is not recognized.
+    pub fn uri_to_file_path(&self) -> Option<std::path::PathBuf> {
+        self.uri.as_ref().and_then(|uri| {
+            let path = uri
+                .strip_prefix("yaml_fs://")
+                .or_else(|| uri.strip_prefix("yaml_file://"))?;
+            // Strip fragment suffix like #class:name or #node:name
+            let path = path.split('#').next().unwrap_or(path);
+            Some(std::path::PathBuf::from(path))
+        })
+    }
+
     /// Return the entity state.
     ///
     /// See [`EntityState`] for the pipeline stages.
@@ -425,5 +441,30 @@ mod tests {
 
         let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
         assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn test_uri_to_file_path_yaml_fs() {
+        let mut class = Class::new("myclass".to_string()).build();
+        class.set_uri("yaml_fs:///etc/reclass/classes/myclass.yml");
+        let path = class.uri_to_file_path().unwrap();
+        assert_eq!(
+            path,
+            std::path::PathBuf::from("/etc/reclass/classes/myclass.yml")
+        );
+    }
+
+    #[test]
+    fn test_uri_to_file_path_yaml_file_with_fragment() {
+        let mut class = Class::new("myclass".to_string()).build();
+        class.set_uri("yaml_file:///etc/reclass/inventory.yml#class:myclass");
+        let path = class.uri_to_file_path().unwrap();
+        assert_eq!(path, std::path::PathBuf::from("/etc/reclass/inventory.yml"));
+    }
+
+    #[test]
+    fn test_uri_to_file_path_none() {
+        let class = Class::new("myclass".to_string()).build();
+        assert!(class.uri_to_file_path().is_none());
     }
 }

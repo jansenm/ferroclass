@@ -3,7 +3,7 @@
 
 use crate::inventory::Inventory;
 use crate::inventory::applications::Applications;
-use crate::inventory::diagnostic::{Diagnostic, EntityState, ToDiagnostics};
+use crate::inventory::diagnostic::{Diagnostic, EntityState, SourceLocation, ToDiagnostics};
 use crate::inventory::elements::{Class, Node};
 use crate::inventory::interpolation;
 use crate::inventory::inv_query;
@@ -66,7 +66,11 @@ impl ToDiagnostics for Error {
 /// - `state: Failed`
 /// - Error diagnostics from the merge error
 /// - Empty parameters, exports, classes, and applications
-fn make_failed_node(node: &Node, diagnostics: Vec<Diagnostic>) -> Node {
+///
+/// Diagnostics that don't already have a source location are enriched
+/// with the node's source file (derived from its URI).
+fn make_failed_node(node: &Node, mut diagnostics: Vec<Diagnostic>) -> Node {
+    enrich_diagnostics_with_entity_location(node.uri_to_file_path().as_deref(), &mut diagnostics);
     let mut builder = Node::new(node.name().to_string())
         .environment(node.environment().clone())
         .state(EntityState::Failed);
@@ -83,7 +87,11 @@ fn make_failed_node(node: &Node, diagnostics: Vec<Diagnostic>) -> Node {
 }
 
 /// Create a Failed class with minimal data and diagnostics.
-fn make_failed_class(class: &Class, diagnostics: Vec<Diagnostic>) -> Class {
+///
+/// Diagnostics that don't already have a source location are enriched
+/// with the class's source file (derived from its URI).
+fn make_failed_class(class: &Class, mut diagnostics: Vec<Diagnostic>) -> Class {
+    enrich_diagnostics_with_entity_location(class.uri_to_file_path().as_deref(), &mut diagnostics);
     let mut builder = Class::new(class.name().to_string())
         .environment(class.environment().clone())
         .state(EntityState::Failed);
@@ -94,6 +102,25 @@ fn make_failed_class(class: &Class, diagnostics: Vec<Diagnostic>) -> Class {
         builder = builder.uri(uri.to_string());
     }
     builder.build()
+}
+
+/// If a diagnostic lacks a source location, try to fill it in from the
+/// entity's file path (derived from its URI).
+///
+/// The URI has the form `yaml_fs:///path/to/file.yml` or
+/// `yaml_file:///path/to/file.yml#class:name`; `uri_to_file_path()`
+/// strips the scheme and fragment to get a filesystem path.
+fn enrich_diagnostics_with_entity_location(
+    file_path: Option<&std::path::Path>,
+    diagnostics: &mut [Diagnostic],
+) {
+    if let Some(path) = file_path {
+        for diag in diagnostics.iter_mut() {
+            if diag.location.is_none() {
+                diag.location = Some(SourceLocation::file(path));
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -576,5 +603,34 @@ mod tests {
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code.as_deref(), Some("MERGE-001"));
         assert!(diags[0].message.contains("cannot merge"));
+    }
+
+    #[test]
+    fn test_enrich_diagnostics_with_entity_location() {
+        use std::path::Path;
+
+        // Diagnostics without a location get one from the file path
+        let mut diags = vec![Diagnostic::error("class 'foo' not found").with_code("INV-001")];
+        enrich_diagnostics_with_entity_location(Some(Path::new("/path/to/node.yml")), &mut diags);
+        assert!(diags[0].location.is_some());
+        let loc = diags[0].location.as_ref().unwrap();
+        assert_eq!(loc.file, Path::new("/path/to/node.yml"));
+
+        // Diagnostics that already have a location are NOT overwritten
+        let mut diags = vec![
+            Diagnostic::error("parse error")
+                .with_code("PARSE-002")
+                .with_location(SourceLocation::file("/other/file.yml")),
+        ];
+        enrich_diagnostics_with_entity_location(Some(Path::new("/path/to/node.yml")), &mut diags);
+        assert_eq!(
+            diags[0].location.as_ref().unwrap().file,
+            Path::new("/other/file.yml")
+        );
+
+        // No file path means no enrichment
+        let mut diags = vec![Diagnostic::error("class not found").with_code("INV-001")];
+        enrich_diagnostics_with_entity_location(None, &mut diags);
+        assert!(diags[0].location.is_none());
     }
 }

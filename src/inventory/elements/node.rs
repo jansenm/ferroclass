@@ -100,6 +100,22 @@ impl Node {
         self.uri = Some(uri.into());
     }
 
+    /// Convert the entity's URI to a filesystem path.
+    ///
+    /// Strips the `yaml_fs://` or `yaml_file://` URI scheme prefix and
+    /// any fragment suffix (e.g. `#class:name`). Returns `None` if the
+    /// entity has no URI or the URI scheme is not recognized.
+    pub fn uri_to_file_path(&self) -> Option<std::path::PathBuf> {
+        self.uri.as_ref().and_then(|uri| {
+            let path = uri
+                .strip_prefix("yaml_fs://")
+                .or_else(|| uri.strip_prefix("yaml_file://"))?;
+            // Strip fragment suffix like #class:name or #node:name
+            let path = path.split('#').next().unwrap_or(path);
+            Some(std::path::PathBuf::from(path))
+        })
+    }
+
     pub fn short_name(&self) -> &str {
         self.short_name.as_deref().unwrap_or(&self.name)
     }
@@ -599,5 +615,30 @@ mod tests {
         assert_eq!(keys[0], &YamlValue::String("_reclass_".to_string()));
 
         assert_eq!(doc["exports"].as_hash().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_uri_to_file_path_yaml_fs() {
+        let mut node = Node::new("web01.example.com".to_string()).build();
+        node.set_uri("yaml_fs:///etc/reclass/nodes/web01.yml");
+        let path = node.uri_to_file_path().unwrap();
+        assert_eq!(
+            path,
+            std::path::PathBuf::from("/etc/reclass/nodes/web01.yml")
+        );
+    }
+
+    #[test]
+    fn test_uri_to_file_path_yaml_file_with_fragment() {
+        let mut node = Node::new("web01.example.com".to_string()).build();
+        node.set_uri("yaml_file:///etc/reclass/inventory.yml#node:web01");
+        let path = node.uri_to_file_path().unwrap();
+        assert_eq!(path, std::path::PathBuf::from("/etc/reclass/inventory.yml"));
+    }
+
+    #[test]
+    fn test_uri_to_file_path_none() {
+        let node = Node::new("web01.example.com".to_string()).build();
+        assert!(node.uri_to_file_path().is_none());
     }
 }
